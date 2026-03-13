@@ -1,14 +1,21 @@
 use bevy::prelude::*;
+use bevy::core_pipeline::bloom::Bloom;
 
 use crate::simulation::SimulationState;
 
-/// Spawns the 2D camera.
+/// Spawns the 2D camera with bloom effects enabled.
 ///
 /// Zoom is set so that 1 world unit ≈ 80 pixels.
 pub fn setup_camera(mut commands: Commands) {
     let mut projection = OrthographicProjection::default_2d();
     projection.scale = 1.0 / 80.0;
-    commands.spawn((Camera2d, projection));
+
+    let bloom = Bloom {
+        intensity: 0.3,
+        ..default()
+    };
+
+    commands.spawn((Camera2d, projection, bloom));
 }
 
 /// Smoothly lerps the camera toward the creature's centre of mass + 2 units above.

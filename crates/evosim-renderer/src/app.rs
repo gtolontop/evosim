@@ -3,11 +3,14 @@ use evosim_core::CreatureFactory;
 use evosim_genetics::Genome;
 
 use crate::{
+    background::draw_background_grid,
     camera::{camera_follow_system, setup_camera},
+    effects::{render_particle_effects_system, update_particle_effects_system, ParticleEffects},
     hud::{setup_hud, update_hud_system},
     input::{input_system, StoredGenome},
     render::render_creature_system,
     simulation::{simulation_step_system, SimulationState},
+    trails::{trail_render_system, trail_update_system, TrailBuffer},
 };
 
 /// Builds and runs the Bevy app, blocking until the window is closed.
@@ -46,13 +49,20 @@ pub fn run_renderer(genome: &Genome, generation: u32, fitness: f32) {
             fitness,
         })
         .insert_resource(StoredGenome(genome.clone()))
+        .insert_resource(TrailBuffer::default())
+        .insert_resource(ParticleEffects::default())
         .add_systems(Startup, (setup_camera, setup_hud))
         .add_systems(
             Update,
             (
                 input_system,
                 simulation_step_system,
+                trail_update_system,
+                update_particle_effects_system,
                 render_creature_system,
+                draw_background_grid,
+                trail_render_system,
+                render_particle_effects_system,
                 camera_follow_system,
                 update_hud_system,
             )
