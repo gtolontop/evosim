@@ -8,3 +8,5 @@ license = "MIT"
 [dependencies]
 bevy = { workspace = true }
 evosim-core = { workspace = true }
+evosim-genetics = { workspace = true }
+serde_json = "1"
