@@ -21,6 +21,31 @@ pub struct SimConfig {
     pub seed: u64,
 }
 
+impl SimConfig {
+    /// Applies CLI flag overrides on top of the loaded config values.
+    ///
+    /// Each argument is applied only when `Some`; `None` leaves the existing
+    /// config value unchanged. When `population` is overridden the internal
+    /// [`GeneticsConfig::population_size`] is kept in sync automatically.
+    pub fn apply_overrides(
+        &mut self,
+        generations: Option<usize>,
+        population: Option<usize>,
+        seed: Option<u64>,
+    ) {
+        if let Some(g) = generations {
+            self.generations = g;
+        }
+        if let Some(p) = population {
+            self.population_size = p;
+            self.genetics.population_size = p;
+        }
+        if let Some(s) = seed {
+            self.seed = s;
+        }
+    }
+}
+
 impl Default for SimConfig {
     fn default() -> Self {
         Self {
@@ -38,6 +63,21 @@ impl Default for SimConfig {
             },
             seed: 42,
         }
+    }
+}
+
+/// Writes the default [`SimConfig`] as TOML to `path`, overwriting any
+/// existing file.
+///
+/// Prints a confirmation or warning to stdout/stderr.
+pub fn write_default(path: &str) {
+    let default = SimConfig::default();
+    match toml::to_string_pretty(&default) {
+        Ok(toml_str) => match std::fs::write(path, toml_str) {
+            Ok(()) => println!("Wrote default config to '{path}'"),
+            Err(e) => eprintln!("error: could not write config to '{path}': {e}"),
+        },
+        Err(e) => eprintln!("error: could not serialise default config: {e}"),
     }
 }
 

@@ -17,3 +17,4 @@ serde_json = "1"
 toml = { workspace = true }
 rayon = { workspace = true }
 rand = { workspace = true }
+clap = { version = "4", features = ["derive"] }
