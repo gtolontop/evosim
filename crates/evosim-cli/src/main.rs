@@ -38,6 +38,9 @@ fn main() {
         Command::Inspect { dir, best } => {
             cmd_inspect(dir, best);
         }
+        Command::Watch { dir, generation } => {
+            cmd_watch(dir, generation);
+        }
     }
 }
 
@@ -171,6 +174,39 @@ fn best_index(fitnesses: &[f32]) -> Option<usize> {
         .enumerate()
         .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
         .map(|(i, _)| i)
+}
+
+/// Opens the Bevy renderer with a saved champion.
+///
+/// Picks the champion with the highest fitness unless `--generation` is given.
+/// Prints a helpful error and exits if no champions are found.
+fn cmd_watch(dir: String, generation: Option<u32>) {
+    let records = inspect::load_champions(&dir);
+    if records.is_empty() {
+        eprintln!("No champions found. Run `evosim run` first.");
+        return;
+    }
+
+    let record = if let Some(gen) = generation {
+        match records.iter().find(|r| r.generation == gen) {
+            Some(r) => r,
+            None => {
+                let available: Vec<u32> = records.iter().map(|r| r.generation).collect();
+                eprintln!(
+                    "No champion saved for generation {gen}. Available generations: {available:?}"
+                );
+                return;
+            }
+        }
+    } else {
+        records
+            .iter()
+            .max_by(|a, b| a.fitness.partial_cmp(&b.fitness).unwrap_or(std::cmp::Ordering::Equal))
+            .expect("records is non-empty")
+    };
+
+    let genome = Genome::new(record.genes.clone());
+    evosim_renderer::run_renderer(&genome, record.generation, record.fitness);
 }
 
 /// Creates a minimal two-particle creature with `fitness = NEG_INFINITY` as
