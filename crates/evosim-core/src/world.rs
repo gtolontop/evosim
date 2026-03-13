@@ -1,3 +1,5 @@
+use rayon::prelude::*;
+
 use crate::creature::Creature;
 
 /// Top-level simulation state holding all creatures and global parameters.
@@ -24,5 +26,15 @@ impl World {
             generation: 0,
             dt,
         }
+    }
+
+    /// Steps all creatures forward by one time-step in parallel.
+    ///
+    /// Uses `rayon::par_iter_mut()` to distribute work across threads.
+    pub fn step_all(&mut self) {
+        let dt = self.dt;
+        self.creatures.par_iter_mut().for_each(|creature| {
+            creature.step(dt);
+        });
     }
 }
