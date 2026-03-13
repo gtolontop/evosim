@@ -8,12 +8,14 @@
 
 pub mod constants;
 pub mod creature;
+pub mod factory;
 pub mod muscle;
 pub mod particle;
 pub mod world;
 
 pub use constants::*;
 pub use creature::Creature;
+pub use factory::CreatureFactory;
 pub use muscle::Muscle;
 pub use particle::Particle;
 pub use world::World;
