@@ -8,3 +8,4 @@ license = "MIT"
 [dependencies]
 glam = { workspace = true }
 rayon = { workspace = true }
+evosim-genetics = { path = "../evosim-genetics" }
