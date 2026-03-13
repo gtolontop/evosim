@@ -1,0 +1,32 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/evosim-core",
+    "crates/evosim-genetics",
+    "crates/evosim-renderer",
+    "crates/evosim-cli",
+]
+
+[workspace.dependencies]
+# Math
+glam = "0.29"
+
+# Parallelism
+rayon = "1.10"
+
+# Randomness
+rand = "0.8"
+rand_distr = "0.4"
+
+# Rendering
+bevy = "0.15"
+
+# Serialization & config
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
+# Internal crates
+evosim-core = { path = "crates/evosim-core" }
+evosim-genetics = { path = "crates/evosim-genetics" }
+evosim-renderer = { path = "crates/evosim-renderer" }
+evosim-cli = { path = "crates/evosim-cli" }

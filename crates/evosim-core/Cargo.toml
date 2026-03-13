@@ -1,0 +1,10 @@
+[package]
+name = "evosim-core"
+version = "0.1.0"
+edition = "2021"
+description = "Core physics engine for the evosim evolution simulator"
+license = "MIT"
+
+[dependencies]
+glam = { workspace = true }
+rayon = { workspace = true }
