@@ -1,0 +1,10 @@
+[package]
+name = "evosim-genetics"
+version = "0.1.0"
+edition = "2021"
+description = "Genome encoding, mutation, and selection for evosim creatures"
+license = "MIT"
+
+[dependencies]
+rand = { workspace = true }
+rand_distr = { workspace = true }
