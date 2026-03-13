@@ -58,4 +58,15 @@ pub enum Command {
         #[arg(long)]
         best: bool,
     },
+
+    /// Open the Bevy renderer and watch the best saved champion move in real time.
+    Watch {
+        /// Directory containing `gen_XXXX.json` champion files.
+        #[arg(short, long, default_value = "champions")]
+        dir: String,
+
+        /// Watch a specific generation instead of the one with the highest fitness.
+        #[arg(long)]
+        generation: Option<u32>,
+    },
 }

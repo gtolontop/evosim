@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 evosim-core = { path = "../evosim-core" }
 evosim-genetics = { path = "../evosim-genetics" }
+evosim-renderer = { path = "../evosim-renderer" }
 serde = { workspace = true }
 serde_json = "1"
 toml = { workspace = true }
