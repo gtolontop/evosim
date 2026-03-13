@@ -1,0 +1,17 @@
+[package]
+name = "evosim-cli"
+version = "0.1.0"
+edition = "2021"
+description = "Command-line interface and orchestrator for the evosim evolution simulator"
+license = "MIT"
+
+[[bin]]
+name = "evosim"
+path = "src/main.rs"
+
+[dependencies]
+evosim-core = { workspace = true }
+evosim-genetics = { workspace = true }
+evosim-renderer = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
