@@ -1,0 +1,10 @@
+[package]
+name = "evosim-renderer"
+version = "0.1.0"
+edition = "2021"
+description = "Bevy-based visualizer for the evosim evolution simulator"
+license = "MIT"
+
+[dependencies]
+bevy = { workspace = true }
+evosim-core = { workspace = true }
