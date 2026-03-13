@@ -10,8 +10,10 @@ name = "evosim"
 path = "src/main.rs"
 
 [dependencies]
-evosim-core = { workspace = true }
-evosim-genetics = { workspace = true }
-evosim-renderer = { workspace = true }
+evosim-core = { path = "../evosim-core" }
+evosim-genetics = { path = "../evosim-genetics" }
 serde = { workspace = true }
+serde_json = "1"
 toml = { workspace = true }
+rayon = { workspace = true }
+rand = { workspace = true }
