@@ -10,7 +10,12 @@ pub struct SimulationState {
     pub speed_multiplier: f32,
     pub step_count: u32,
     pub generation: u32,
+    /// Live runtime fitness — updated every frame from `creature.fitness`.
     pub fitness: f32,
+    /// Champion's recorded fitness from the JSON file — never modified after startup.
+    pub champion_fitness: f32,
+    /// When true, overlay particle indices, activation values, and velocity arrows.
+    pub debug_mode: bool,
 }
 
 /// Advances the creature physics each frame unless paused.

@@ -8,7 +8,7 @@ use crate::{
     effects::{render_particle_effects_system, update_particle_effects_system, ParticleEffects},
     hud::{setup_hud, update_hud_system},
     input::{input_system, StoredGenome},
-    render::render_creature_system,
+    render::{render_creature_system, setup_render_cache, MuscleRenderCache},
     simulation::{simulation_step_system, SimulationState},
     trails::{trail_render_system, trail_update_system, TrailBuffer},
 };
@@ -46,12 +46,15 @@ pub fn run_renderer(genome: &Genome, generation: u32, fitness: f32) {
             speed_multiplier: 1.0,
             step_count: 0,
             generation,
-            fitness,
+            fitness: 0.0,
+            champion_fitness: fitness,
+            debug_mode: false,
         })
         .insert_resource(StoredGenome(genome.clone()))
+        .insert_resource(MuscleRenderCache::default())
         .insert_resource(TrailBuffer::default())
         .insert_resource(ParticleEffects::default())
-        .add_systems(Startup, (setup_camera, setup_hud))
+        .add_systems(Startup, (setup_camera, setup_hud, setup_render_cache))
         .add_systems(
             Update,
             (

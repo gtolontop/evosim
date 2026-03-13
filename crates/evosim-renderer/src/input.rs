@@ -14,6 +14,7 @@ pub struct StoredGenome(pub Genome);
 /// - `ArrowUp`    → speed × 2 (max 8.0)
 /// - `ArrowDown`  → speed ÷ 2 (min 0.1)
 /// - `R`          → rebuild creature from stored genome
+/// - `D`          → toggle debug mode (particle indices, velocity arrows)
 pub fn input_system(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut state: ResMut<SimulationState>,
@@ -37,5 +38,9 @@ pub fn input_system(
             state.step_count = 0;
             state.fitness = 0.0;
         }
+    }
+
+    if keyboard.just_pressed(KeyCode::KeyD) {
+        state.debug_mode = !state.debug_mode;
     }
 }

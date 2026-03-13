@@ -8,7 +8,6 @@ pub struct HudText;
 
 /// Spawns the top-left HUD panel with an empty text placeholder.
 pub fn setup_hud(mut commands: Commands) {
-    // Outer panel: dark semi-transparent background
     commands
         .spawn((
             Node {
@@ -39,20 +38,23 @@ pub fn update_hud_system(
     mut query: Query<&mut Text, With<HudText>>,
 ) {
     let paused_tag = if state.paused { " [PAUSED]" } else { "" };
+    let debug_tag = if state.debug_mode { " [DEBUG]" } else { "" };
     let content = format!(
-        "evosim{}\n\
-         ━━━━━━━━━━━━━━\n\
+        "evosim{}{}\n\
+         ---\n\
          Gen:     {:04}\n\
          Fitness: {:.3}\n\
          Step:    {:06}\n\
          Speed:   {:.1}x\n\
-         ━━━━━━━━━━━━━━\n\
+         ---\n\
          [SPACE] pause\n\
-         [↑↓]   speed\n\
-         [R]    reset",
+         [UP][DOWN] speed\n\
+         [R]    reset\n\
+         [D]    debug",
         paused_tag,
+        debug_tag,
         state.generation,
-        state.fitness,
+        state.champion_fitness,
         state.step_count,
         state.speed_multiplier,
     );
