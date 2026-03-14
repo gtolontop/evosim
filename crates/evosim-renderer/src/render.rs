@@ -5,13 +5,14 @@ use crate::simulation::SimulationState;
 // ── Humanoid colour palette ─────────────────────────────────────────────────
 
 const BODY_COLOR: Color = Color::srgb(0.30, 0.65, 0.30);
-const SPINE_COLOR: Color = Color::srgb(0.20, 0.50, 0.20);
-const BONE_COLOR: Color = Color::srgb(0.30, 0.55, 0.30);
-const LIMB_COLOR: Color = Color::srgb(0.25, 0.55, 0.25);
+const SPINE_COLOR: Color = Color::srgba(0.45, 0.70, 0.35, 0.75);
+const BONE_COLOR: Color = Color::srgb(0.85, 0.85, 0.75);
+const LIMB_COLOR: Color = Color::srgb(0.85, 0.40, 0.40);
 const JOINT_COLOR: Color = Color::srgb(0.40, 0.75, 0.35);
 const SHOULDER_HIP_COLOR: Color = Color::srgb(0.35, 0.65, 0.30);
 const ENDPOINT_COLOR: Color = Color::srgb(1.0, 0.85, 0.3);
 const ENDPOINT_GRIP_COLOR: Color = Color::srgb(1.0, 0.4, 0.2);
+const TORSO_FILL_COLOR: Color = Color::srgba(0.35, 0.60, 0.30, 0.70);
 
 // ── Marker components ─────────────────────────────────────────────────────────
 
@@ -30,9 +31,12 @@ pub(crate) struct DebugLabelMarker;
 ///
 /// Transforms and material colours are updated in-place every frame —
 /// entities are never despawned or re-spawned during playback.
+#[derive(Component)]
+pub(crate) struct TorsoMarker;
+
 #[derive(Resource, Default)]
 pub struct MuscleRenderCache {
-    /// One entry per `creature.muscles`.  `None` = cross-stability bone (drawn as gizmo).
+    /// One entry per `creature.muscles`.
     pub muscle_entries: Vec<Option<(Entity, Handle<ColorMaterial>)>>,
     /// One entity per `creature.particles`.
     pub particle_entities: Vec<Entity>,
@@ -40,6 +44,8 @@ pub struct MuscleRenderCache {
     pub particle_materials: Vec<Handle<ColorMaterial>>,
     /// One `Text2d` entity per particle (shown only in debug mode).
     pub debug_label_entities: Vec<Entity>,
+    /// Dedicated torso body quad (shoulders → hips).
+    pub torso_entity: Option<Entity>,
 }
 
 // ── Setup (Startup) ───────────────────────────────────────────────────────────
@@ -57,22 +63,18 @@ pub fn setup_render_cache(
 
     // Unit quad — scaled per-muscle to (length, width) each frame.
     let quad_mesh = meshes.add(Rectangle::new(1.0, 1.0));
-    let num_muscles = creature.muscles.len();
+
 
     for (i, muscle) in creature.muscles.iter().enumerate() {
-        // Cross-stability bones (last 2) → gizmo only, no mesh.
-        if muscle.is_bone && i >= num_muscles.saturating_sub(2) {
-            cache.muscle_entries.push(None);
-            continue;
-        }
-
         // Role-based colour.
-        let color = if i <= 1 {
-            SPINE_COLOR  // spine segments
-        } else if i <= 7 {
-            BONE_COLOR   // clavicles, pelvis, bars
+        let color = if i == 16 || i == 17 {
+            TORSO_FILL_COLOR // cross-stability → semi-transparent body fill
+        } else if i <= 1 {
+            SPINE_COLOR      // spine segments
+        } else if muscle.is_bone {
+            BONE_COLOR       // structural + limb bones
         } else {
-            LIMB_COLOR   // active muscles
+            LIMB_COLOR       // active muscles
         };
 
         let mat = materials.add(ColorMaterial {
@@ -98,12 +100,12 @@ pub fn setup_render_cache(
     //  6,8,12,14 = endpoints     → medium, ENDPOINT_COLOR
     for (i, particle) in creature.particles.iter().enumerate() {
         let (radius, color) = match i {
-            0 | 1 | 2 => (0.10, BODY_COLOR),
-            3 | 4 => (0.08, SHOULDER_HIP_COLOR),
-            9 | 10 => (0.08, SHOULDER_HIP_COLOR),
-            5 | 7 | 11 | 13 => (0.06, JOINT_COLOR),
-            6 | 8 | 12 | 14 => (0.08, ENDPOINT_COLOR),
-            _ => (0.06, Color::WHITE),
+            0 | 1 | 2 => (0.09, BODY_COLOR),       // spine
+            3 | 4 => (0.07, SHOULDER_HIP_COLOR),    // shoulders
+            9 | 10 => (0.07, SHOULDER_HIP_COLOR),   // hips
+            5 | 7 | 11 | 13 => (0.04, JOINT_COLOR), // elbows/knees
+            6 | 8 | 12 | 14 => (0.05, ENDPOINT_COLOR), // hands/feet
+            _ => (0.04, Color::WHITE),
         };
 
         let circle = meshes.add(Circle::new(radius));
@@ -143,6 +145,22 @@ pub fn setup_render_cache(
             .id();
         cache.debug_label_entities.push(label);
     }
+
+    // Torso body quad — a single rectangle positioned between shoulders and hips.
+    let torso_mesh = meshes.add(Rectangle::new(1.0, 1.0));
+    let torso_mat = materials.add(ColorMaterial {
+        color: TORSO_FILL_COLOR,
+        ..default()
+    });
+    let torso = commands
+        .spawn((
+            Mesh2d(torso_mesh),
+            MeshMaterial2d(torso_mat),
+            Transform::default(),
+            TorsoMarker,
+        ))
+        .id();
+    cache.torso_entity = Some(torso);
 }
 
 // ── Per-frame update (Update) ─────────────────────────────────────────────────
@@ -154,7 +172,7 @@ pub fn render_creature_system(
     cache: Res<MuscleRenderCache>,
     mut q_transforms: Query<
         &mut Transform,
-        Or<(With<MuscleMarker>, With<ParticleMarker>, With<DebugLabelMarker>)>,
+        Or<(With<MuscleMarker>, With<ParticleMarker>, With<DebugLabelMarker>, With<TorsoMarker>)>,
     >,
     mut q_vis: Query<&mut Visibility, With<DebugLabelMarker>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
@@ -162,19 +180,10 @@ pub fn render_creature_system(
 ) {
     let creature = &state.creature;
     let debug = state.debug_mode;
-    let num_muscles = creature.muscles.len();
+
 
     // ── Muscles ──────────────────────────────────────────────────────────
     for (i, muscle) in creature.muscles.iter().enumerate() {
-        // Cross-stability bones (last 2): faint gizmo lines.
-        if muscle.is_bone && i >= num_muscles.saturating_sub(2) {
-            let pa = creature.particles[muscle.a].pos;
-            let pb = creature.particles[muscle.b].pos;
-            let alpha = if debug { 0.5 } else { 0.12 };
-            gizmos.line_2d(pa, pb, Color::srgba(0.5, 0.5, 0.5, alpha));
-            continue;
-        }
-
         let Some((entity, ref mat_handle)) = cache.muscle_entries[i] else {
             continue;
         };
@@ -186,24 +195,43 @@ pub fn render_creature_system(
         let len = diff.length().max(1e-4);
         let angle = diff.y.atan2(diff.x);
 
+        let is_cross = i == 16 || i == 17;
+
         // Width based on segment role.
-        let width = if i <= 1 {
-            0.14  // spine segments — thick body
+        let width = if is_cross {
+            0.02  // cross-stability — hairline
+        } else if i <= 1 {
+            0.14  // spine
+        } else if i <= 5 {
+            0.08  // clavicles + pelvis
         } else if i <= 7 {
-            0.10  // structural bones (clavicles, pelvis, bars)
-        } else if i % 2 == 0 {
-            0.07  // proximal limb muscles
+            0.05  // shoulder bar + hip bar
+        } else if i <= 15 {
+            0.04  // limb bones — thin rigid segments
+        } else if !muscle.is_bone {
+            0.05  // active cross-joint muscles
         } else {
-            0.05  // distal limb muscles
+            0.04  // fallback
+        };
+
+        // Z-order: torso behind everything, then bones, then muscles in front.
+        let z = if is_cross {
+            -0.4  // cross-stability — behind bones
+        } else if i <= 1 {
+            -0.3  // spine
+        } else if muscle.is_bone {
+            0.1   // structural + limb bones
+        } else {
+            0.2   // active muscles — front
         };
 
         if let Ok(mut tr) = q_transforms.get_mut(entity) {
-            tr.translation = Vec3::new(mid.x, mid.y, 0.0);
+            tr.translation = Vec3::new(mid.x, mid.y, z);
             tr.rotation = Quat::from_rotation_z(angle);
             tr.scale = Vec3::new(len, width, 1.0);
         }
 
-        // Subtle activation brightness modulation for active muscles.
+        // Activation brightness modulation for active muscles (red tones).
         if !muscle.is_bone {
             let t = if muscle.amplitude > 1e-6 {
                 (muscle.current_activation / muscle.amplitude).clamp(0.0, 1.0)
@@ -211,21 +239,58 @@ pub fn render_creature_system(
                 0.0
             };
             if let Some(mat) = materials.get_mut(mat_handle.id()) {
-                let boost = t * 0.15;
+                let boost = t * 0.25;
                 mat.color = Color::srgb(
-                    0.25 + boost,
-                    0.55 + boost * 0.5,
-                    0.25 + boost * 0.3,
+                    0.70 + boost,
+                    0.30 + boost * 0.3,
+                    0.30 + boost * 0.2,
                 );
+            }
+        }
+    }
+
+    // ── Torso body quad (shoulders 3,4 → hips 9,10) ─────────────────────
+    if let Some(torso_entity) = cache.torso_entity {
+        if creature.particles.len() >= 15 {
+            let p3 = creature.particles[3].pos;  // shoulder A
+            let p4 = creature.particles[4].pos;  // shoulder B
+            let p9 = creature.particles[9].pos;  // hip A
+            let p10 = creature.particles[10].pos; // hip B
+
+            let shoulder_mid = (p3 + p4) * 0.5;
+            let hip_mid = (p9 + p10) * 0.5;
+            let center = (shoulder_mid + hip_mid) * 0.5;
+
+            let spine_dir = shoulder_mid - hip_mid;
+            let height = spine_dir.length().max(0.01);
+            let angle = spine_dir.y.atan2(spine_dir.x);
+
+            let shoulder_width = (p3 - p4).length();
+            let hip_width = (p9 - p10).length();
+            let width = shoulder_width.max(hip_width) + 0.05; // slight padding
+
+            if let Ok(mut tr) = q_transforms.get_mut(torso_entity) {
+                tr.translation = Vec3::new(center.x, center.y, -1.0);
+                // Align X axis along spine direction; Y axis = body width
+                tr.rotation = Quat::from_rotation_z(angle);
+                tr.scale = Vec3::new(height, width, 1.0);
             }
         }
     }
 
     // ── Particles: move circle meshes ────────────────────────────────────
     for (i, particle) in creature.particles.iter().enumerate() {
+        // Z per role: body behind limbs, endpoints frontmost.
+        let z = match i {
+            0 | 1 | 2 => 0.05,          // spine — just above spine muscles
+            3 | 4 | 9 | 10 => 0.15,     // shoulders/hips — between bones and limbs
+            5 | 7 | 11 | 13 => 0.3,     // elbows/knees — in front of limb muscles
+            6 | 8 | 12 | 14 => 0.35,    // hands/feet — frontmost
+            _ => 0.3,
+        };
         let entity = cache.particle_entities[i];
         if let Ok(mut tr) = q_transforms.get_mut(entity) {
-            tr.translation = Vec3::new(particle.pos.x, particle.pos.y, 1.0);
+            tr.translation = Vec3::new(particle.pos.x, particle.pos.y, z);
         }
     }
 
