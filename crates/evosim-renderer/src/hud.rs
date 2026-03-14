@@ -39,6 +39,7 @@ pub fn update_hud_system(
 ) {
     let height = state.creature.max_height;
     let climbed = (height - 3.0_f32).max(0.0); // climbed above START_HEIGHT
+    let com_y = state.creature.center_of_mass().y;
     let time_s = state.step_count as f32 * 0.016;
     let max_time = state.max_steps as f32 * 0.016;
 
@@ -51,11 +52,13 @@ pub fn update_hud_system(
     };
 
     let content = format!(
-        "Gen {:04}  fit {:.1}\nHauteur {:.1}m  (grimpe {:.1}m)\n{status}  [R] reset  [D] debug",
+        "Gen {:04}  fit {:.1} (champ {:.1})\nGrimpe: {:.1}m  (max {:.1}m  COM {:.1}m)\n{status}  [R] reset  [D] debug",
         state.generation,
+        state.fitness,
         state.champion_fitness,
-        height,
         climbed,
+        height,
+        com_y,
     );
 
     for mut text in &mut query {
