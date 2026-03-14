@@ -37,6 +37,9 @@ pub fn input_system(
             state.creature = creature;
             state.step_count = 0;
             state.fitness = 0.0;
+            state.time_accumulator = 0.0;
+            state.paused = false;
+            state.evaluation_done = false;
         }
     }
 

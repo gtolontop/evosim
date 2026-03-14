@@ -8,7 +8,6 @@
 pub mod app;
 mod background;
 mod camera;
-mod effects;
 mod hud;
 mod input;
 mod render;

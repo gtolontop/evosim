@@ -2,6 +2,17 @@ use bevy::prelude::*;
 
 use crate::simulation::SimulationState;
 
+// ── Humanoid colour palette ─────────────────────────────────────────────────
+
+const BODY_COLOR: Color = Color::srgb(0.30, 0.65, 0.30);
+const SPINE_COLOR: Color = Color::srgb(0.20, 0.50, 0.20);
+const BONE_COLOR: Color = Color::srgb(0.30, 0.55, 0.30);
+const LIMB_COLOR: Color = Color::srgb(0.25, 0.55, 0.25);
+const JOINT_COLOR: Color = Color::srgb(0.40, 0.75, 0.35);
+const SHOULDER_HIP_COLOR: Color = Color::srgb(0.35, 0.65, 0.30);
+const ENDPOINT_COLOR: Color = Color::srgb(1.0, 0.85, 0.3);
+const ENDPOINT_GRIP_COLOR: Color = Color::srgb(1.0, 0.4, 0.2);
+
 // ── Marker components ─────────────────────────────────────────────────────────
 
 #[derive(Component)]
@@ -21,17 +32,19 @@ pub(crate) struct DebugLabelMarker;
 /// entities are never despawned or re-spawned during playback.
 #[derive(Resource, Default)]
 pub struct MuscleRenderCache {
-    /// One entry per `creature.muscles`.  `None` = bone (drawn as gizmo).
+    /// One entry per `creature.muscles`.  `None` = cross-stability bone (drawn as gizmo).
     pub muscle_entries: Vec<Option<(Entity, Handle<ColorMaterial>)>>,
     /// One entity per `creature.particles`.
     pub particle_entities: Vec<Entity>,
+    /// Material handle per particle — needed to dynamically update endpoint grip colours.
+    pub particle_materials: Vec<Handle<ColorMaterial>>,
     /// One `Text2d` entity per particle (shown only in debug mode).
     pub debug_label_entities: Vec<Entity>,
 }
 
 // ── Setup (Startup) ───────────────────────────────────────────────────────────
 
-/// Spawns mesh entities for every non-bone muscle and every particle.
+/// Spawns mesh entities for muscles and particles with role-based colours.
 /// Called once at Startup after `SimulationState` is available.
 pub fn setup_render_cache(
     mut commands: Commands,
@@ -42,46 +55,73 @@ pub fn setup_render_cache(
 ) {
     let creature = &state.creature;
 
-    // Unit quad — scaled per-muscle to (width, length) each frame.
+    // Unit quad — scaled per-muscle to (length, width) each frame.
     let quad_mesh = meshes.add(Rectangle::new(1.0, 1.0));
+    let num_muscles = creature.muscles.len();
 
-    for muscle in &creature.muscles {
-        if muscle.is_bone {
+    for (i, muscle) in creature.muscles.iter().enumerate() {
+        // Cross-stability bones (last 2) → gizmo only, no mesh.
+        if muscle.is_bone && i >= num_muscles.saturating_sub(2) {
             cache.muscle_entries.push(None);
-        } else {
-            let mat = materials.add(ColorMaterial {
-                color: Color::linear_rgb(0.1, 0.3, 1.5),
-                ..default()
-            });
-            let entity = commands
-                .spawn((
-                    Mesh2d(quad_mesh.clone()),
-                    MeshMaterial2d(mat.clone()),
-                    Transform::default(),
-                    MuscleMarker,
-                ))
-                .id();
-            cache.muscle_entries.push(Some((entity, mat)));
+            continue;
         }
-    }
 
-    // Shared circle mesh for all particles — emissive HDR white.
-    let circle_mesh = meshes.add(Circle::new(0.06));
-    let particle_mat = materials.add(ColorMaterial {
-        color: Color::linear_rgb(1.5, 1.5, 1.5),
-        ..default()
-    });
+        // Role-based colour.
+        let color = if i <= 1 {
+            SPINE_COLOR  // spine segments
+        } else if i <= 7 {
+            BONE_COLOR   // clavicles, pelvis, bars
+        } else {
+            LIMB_COLOR   // active muscles
+        };
 
-    for (i, particle) in creature.particles.iter().enumerate() {
+        let mat = materials.add(ColorMaterial {
+            color,
+            ..default()
+        });
         let entity = commands
             .spawn((
-                Mesh2d(circle_mesh.clone()),
-                MeshMaterial2d(particle_mat.clone()),
+                Mesh2d(quad_mesh.clone()),
+                MeshMaterial2d(mat.clone()),
+                Transform::default(),
+                MuscleMarker,
+            ))
+            .id();
+        cache.muscle_entries.push(Some((entity, mat)));
+    }
+
+    // Role-based particle meshes (15 particles).
+    //  0,1,2    = spine          → large, BODY_COLOR
+    //  3,4      = shoulders      → medium, SHOULDER_HIP_COLOR
+    //  9,10     = hips           → medium, SHOULDER_HIP_COLOR
+    //  5,7,11,13 = joints        → small, JOINT_COLOR
+    //  6,8,12,14 = endpoints     → medium, ENDPOINT_COLOR
+    for (i, particle) in creature.particles.iter().enumerate() {
+        let (radius, color) = match i {
+            0 | 1 | 2 => (0.10, BODY_COLOR),
+            3 | 4 => (0.08, SHOULDER_HIP_COLOR),
+            9 | 10 => (0.08, SHOULDER_HIP_COLOR),
+            5 | 7 | 11 | 13 => (0.06, JOINT_COLOR),
+            6 | 8 | 12 | 14 => (0.08, ENDPOINT_COLOR),
+            _ => (0.06, Color::WHITE),
+        };
+
+        let circle = meshes.add(Circle::new(radius));
+        let mat = materials.add(ColorMaterial {
+            color,
+            ..default()
+        });
+
+        let entity = commands
+            .spawn((
+                Mesh2d(circle),
+                MeshMaterial2d(mat.clone()),
                 Transform::from_translation(Vec3::new(particle.pos.x, particle.pos.y, 1.0)),
                 ParticleMarker,
             ))
             .id();
         cache.particle_entities.push(entity);
+        cache.particle_materials.push(mat);
 
         // Debug index label — hidden by default.
         let label = commands
@@ -109,9 +149,6 @@ pub fn setup_render_cache(
 
 /// Updates mesh transforms and material colours each frame to match the
 /// creature's current physics state.
-///
-/// Bone muscles are drawn via Gizmos (no bloom).
-/// Non-bone muscles use HDR emissive `ColorMaterial` — overbright values glow.
 pub fn render_creature_system(
     state: Res<SimulationState>,
     cache: Res<MuscleRenderCache>,
@@ -125,21 +162,19 @@ pub fn render_creature_system(
 ) {
     let creature = &state.creature;
     let debug = state.debug_mode;
+    let num_muscles = creature.muscles.len();
 
-    // Bone muscles: thin white gizmo lines.
-    for muscle in &creature.muscles {
-        if muscle.is_bone {
+    // ── Muscles ──────────────────────────────────────────────────────────
+    for (i, muscle) in creature.muscles.iter().enumerate() {
+        // Cross-stability bones (last 2): faint gizmo lines.
+        if muscle.is_bone && i >= num_muscles.saturating_sub(2) {
             let pa = creature.particles[muscle.a].pos;
             let pb = creature.particles[muscle.b].pos;
-            gizmos.line_2d(pa, pb, Color::srgba(1.0, 1.0, 1.0, 0.6));
-        }
-    }
-
-    // Non-bone muscles: update mesh transform + emissive colour.
-    for (i, muscle) in creature.muscles.iter().enumerate() {
-        if muscle.is_bone {
+            let alpha = if debug { 0.5 } else { 0.12 };
+            gizmos.line_2d(pa, pb, Color::srgba(0.5, 0.5, 0.5, alpha));
             continue;
         }
+
         let Some((entity, ref mat_handle)) = cache.muscle_entries[i] else {
             continue;
         };
@@ -151,28 +186,42 @@ pub fn render_creature_system(
         let len = diff.length().max(1e-4);
         let angle = diff.y.atan2(diff.x);
 
-        let t = if muscle.amplitude > 1e-6 {
-            (muscle.current_activation / muscle.amplitude).clamp(0.0, 1.0)
+        // Width based on segment role.
+        let width = if i <= 1 {
+            0.14  // spine segments — thick body
+        } else if i <= 7 {
+            0.10  // structural bones (clavicles, pelvis, bars)
+        } else if i % 2 == 0 {
+            0.07  // proximal limb muscles
         } else {
-            0.0
+            0.05  // distal limb muscles
         };
-        // 1 px rest → 4 px full activation, converted to world units (scale 1/80).
-        let width = (1.0 + t * 3.0) / 80.0;
 
         if let Ok(mut tr) = q_transforms.get_mut(entity) {
             tr.translation = Vec3::new(mid.x, mid.y, 0.0);
             tr.rotation = Quat::from_rotation_z(angle);
-            tr.scale = Vec3::new(width, len, 1.0);
+            tr.scale = Vec3::new(len, width, 1.0);
         }
 
-        // t=0 → overbright blue  (0.1, 0.3, 1.5)
-        // t=1 → overbright orange (2.0, 0.4, 0.05)
-        if let Some(mat) = materials.get_mut(mat_handle.id()) {
-            mat.color = Color::linear_rgb(0.1 + t * 1.9, 0.3 + t * 0.1, 1.5 - t * 1.45);
+        // Subtle activation brightness modulation for active muscles.
+        if !muscle.is_bone {
+            let t = if muscle.amplitude > 1e-6 {
+                (muscle.current_activation / muscle.amplitude).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            if let Some(mat) = materials.get_mut(mat_handle.id()) {
+                let boost = t * 0.15;
+                mat.color = Color::srgb(
+                    0.25 + boost,
+                    0.55 + boost * 0.5,
+                    0.25 + boost * 0.3,
+                );
+            }
         }
     }
 
-    // Particles: move circle meshes.
+    // ── Particles: move circle meshes ────────────────────────────────────
     for (i, particle) in creature.particles.iter().enumerate() {
         let entity = cache.particle_entities[i];
         if let Ok(mut tr) = q_transforms.get_mut(entity) {
@@ -180,7 +229,20 @@ pub fn render_creature_system(
         }
     }
 
-    // Debug labels: update positions and toggle visibility.
+    // ── Endpoint grip colour (yellow free / orange gripping) ─────────────
+    for &(p_idx, _) in &creature.grip_phases {
+        if let Some(mat_handle) = cache.particle_materials.get(p_idx) {
+            if let Some(mat) = materials.get_mut(mat_handle.id()) {
+                mat.color = if creature.particles[p_idx].pinned {
+                    ENDPOINT_GRIP_COLOR
+                } else {
+                    ENDPOINT_COLOR
+                };
+            }
+        }
+    }
+
+    // ── Debug labels ─────────────────────────────────────────────────────
     for (i, particle) in creature.particles.iter().enumerate() {
         let Some(&label_entity) = cache.debug_label_entities.get(i) else {
             continue;
@@ -193,7 +255,7 @@ pub fn render_creature_system(
         }
     }
 
-    // Debug overlays: velocity arrows + muscle activation markers.
+    // ── Debug overlays: velocity arrows + muscle activation ──────────────
     if debug {
         for particle in &creature.particles {
             let vel = (particle.pos - particle.prev_pos) * 60.0;
