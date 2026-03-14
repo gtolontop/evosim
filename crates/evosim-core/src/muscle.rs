@@ -25,6 +25,10 @@ pub struct Muscle {
     pub is_bone: bool,
     /// Current activation level in `[0, amplitude]`, driven by the CPG signal.
     pub current_activation: f32,
+    /// Precomputed sin(phase_offset) for fast activation.
+    sin_phase: f32,
+    /// Precomputed cos(phase_offset) for fast activation.
+    cos_phase: f32,
 }
 
 /// Creates a rigid bone constraint between two particles.
@@ -43,6 +47,8 @@ impl Muscle {
             amplitude: 0.0,
             is_bone: true,
             current_activation: 0.0,
+            sin_phase: 0.0,
+            cos_phase: 1.0,
         }
     }
 
@@ -59,6 +65,7 @@ impl Muscle {
         phase_offset: f32,
         amplitude: f32,
     ) -> Self {
+        let (sin_phase, cos_phase) = phase_offset.sin_cos();
         Self {
             a,
             b,
@@ -69,6 +76,8 @@ impl Muscle {
             amplitude,
             is_bone: false,
             current_activation: 0.0,
+            sin_phase,
+            cos_phase,
         }
     }
 
@@ -83,6 +92,17 @@ impl Muscle {
         }
         self.current_activation =
             ((clock + self.phase_offset).sin() * 0.5 + 0.5) * self.amplitude;
+    }
+
+    /// Fast activation using precomputed sin/cos of clock.
+    /// Uses angle-addition: sin(clock+phase) = sin_c*cos_p + cos_c*sin_p
+    #[inline]
+    pub fn update_activation_fast(&mut self, sin_c: f32, cos_c: f32) {
+        if self.is_bone {
+            return;
+        }
+        let sin_val = sin_c * self.cos_phase + cos_c * self.sin_phase;
+        self.current_activation = (sin_val * 0.5 + 0.5) * self.amplitude;
     }
 
     /// Returns the current target length based on activation.
