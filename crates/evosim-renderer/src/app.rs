@@ -3,11 +3,13 @@ use evosim_core::CreatureFactory;
 use evosim_genetics::Genome;
 
 use crate::{
+    background::draw_background,
     camera::{camera_follow_system, setup_camera},
     hud::{setup_hud, update_hud_system},
     input::{input_system, StoredGenome},
-    render::render_creature_system,
+    render::{render_creature_system, setup_render_cache, MuscleRenderCache},
     simulation::{simulation_step_system, SimulationState},
+    trails::{trail_render_system, trail_update_system, TrailBuffer},
 };
 
 /// Builds and runs the Bevy app, blocking until the window is closed.
@@ -36,23 +38,34 @@ pub fn run_renderer(genome: &Genome, generation: u32, fitness: f32) {
                 ..default()
             }),
         )
-        .insert_resource(ClearColor(Color::srgb(0.05, 0.05, 0.08)))
+        // Deep dusk sky — creatures glow nicely against it with bloom
+        .insert_resource(ClearColor(Color::srgb(0.04, 0.09, 0.20)))
         .insert_resource(SimulationState {
             creature,
             paused: false,
             speed_multiplier: 1.0,
             step_count: 0,
+            max_steps: 600,
             generation,
-            fitness,
+            fitness: 0.0,
+            champion_fitness: fitness,
+            debug_mode: false,
+            time_accumulator: 0.0,
+            evaluation_done: false,
         })
         .insert_resource(StoredGenome(genome.clone()))
-        .add_systems(Startup, (setup_camera, setup_hud))
+        .insert_resource(MuscleRenderCache::default())
+        .insert_resource(TrailBuffer::default())
+        .add_systems(Startup, (setup_camera, setup_hud, setup_render_cache))
         .add_systems(
             Update,
             (
                 input_system,
                 simulation_step_system,
+                trail_update_system,
                 render_creature_system,
+                draw_background,
+                trail_render_system,
                 camera_follow_system,
                 update_hud_system,
             )

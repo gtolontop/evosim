@@ -6,10 +6,12 @@
 //! an interactive window showing the creature moving in real time.
 
 pub mod app;
+mod background;
 mod camera;
 mod hud;
 mod input;
 mod render;
 mod simulation;
+mod trails;
 
 pub use app::run_renderer;

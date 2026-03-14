@@ -49,17 +49,18 @@ impl SimConfig {
 impl Default for SimConfig {
     fn default() -> Self {
         Self {
-            population_size: 200,
+            population_size: 1000,
             generations: 500,
-            sim_steps: 600,
+            sim_steps: 400,
             dt: 0.016,
             genetics: GeneticsConfig {
-                population_size: 200,
-                genome_len: 30,
-                mutation_rate: 0.05,
-                mutation_strength: 0.1,
-                elitism: 5,
+                population_size: 1000,
+                genome_len: 40,
+                mutation_rate: 0.15,
+                mutation_strength: 0.3,
+                elitism: 10,
                 tournament_k: 5,
+                selection_mode: "asexual_top50".to_string(),
             },
             seed: 42,
         }

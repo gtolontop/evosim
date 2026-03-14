@@ -16,10 +16,11 @@ mod stats;
 use std::time::Instant;
 
 use clap::Parser;
-use evosim_core::{Creature, CreatureFactory, Muscle, Particle, World};
-use evosim_genetics::{next_generation, Genome};
+use evosim_core::{Creature, CreatureFactory, Muscle, Particle};
+use evosim_genetics::{next_generation, next_generation_asexual, Genome};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
+use rayon::prelude::*;
 
 use champions::save_champion;
 use cli::{Cli, Command};
@@ -57,7 +58,7 @@ fn cmd_run(
     let mut cfg = load_or_create(&config_path);
     cfg.apply_overrides(generations, population, seed);
 
-    let genome_len = CreatureFactory::min_genome_len();
+    let genome_len = cfg.genetics.genome_len;
 
     println!("evosim v{}", env!("CARGO_PKG_VERSION"));
     println!(
@@ -76,42 +77,34 @@ fn cmd_run(
     for gen in 0..cfg.generations {
         let t_start = Instant::now();
 
-        // (a) Build creatures; failed genomes become dummies with NEG_INFINITY fitness.
-        let mut build_errors = 0_usize;
-        let mut world = World::new(cfg.dt);
-        world.creatures = population
-            .iter()
-            .map(|genome| match CreatureFactory::build(genome) {
-                Ok(creature) => creature,
-                Err(_) => {
-                    build_errors += 1;
-                    make_dummy()
-                }
-            })
+        // (a) Build creatures in parallel; failed genomes become dummies.
+        let build_results: Vec<Option<Creature>> = population
+            .par_iter()
+            .map(|genome| CreatureFactory::build(genome).ok())
             .collect();
 
+        let build_errors = build_results.iter().filter(|r| r.is_none()).count();
         if build_errors > 0 {
             eprintln!("warning: gen {gen}: {build_errors} genome(s) failed to build");
         }
 
-        // (b) Parallel physics simulation.
-        for _ in 0..cfg.sim_steps {
-            world.step_all();
-        }
-
-        // (c) Collect fitnesses; failed builds get NEG_INFINITY.
-        let fitnesses: Vec<f32> = world
-            .creatures
-            .iter()
-            .zip(population.iter())
-            .map(|(creature, genome)| {
-                if CreatureFactory::build(genome).is_err() {
-                    f32::NEG_INFINITY
-                } else {
-                    creature.fitness
-                }
-            })
+        // (b) Run ALL sim_steps per creature in a single rayon dispatch.
+        //     Each creature runs its full evaluation independently — no sync barriers.
+        let dt = cfg.dt;
+        let steps = cfg.sim_steps;
+        let mut creatures: Vec<Creature> = build_results
+            .into_iter()
+            .map(|opt| opt.unwrap_or_else(make_dummy))
             .collect();
+
+        creatures.par_iter_mut().for_each(|creature| {
+            for _ in 0..steps {
+                creature.step(dt);
+            }
+        });
+
+        // (c) Collect fitnesses; dummies already have NEG_INFINITY.
+        let fitnesses: Vec<f32> = creatures.iter().map(|c| c.fitness).collect();
 
         let elapsed_ms = t_start.elapsed().as_millis() as u64;
 
@@ -132,15 +125,27 @@ fn cmd_run(
         }
 
         // (f) Next generation.
-        population = next_generation(
-            &population,
-            &fitnesses,
-            cfg.population_size,
-            cfg.genetics.mutation_rate,
-            cfg.genetics.mutation_strength,
-            cfg.genetics.elitism,
-            &mut rng,
-        );
+        population = if cfg.genetics.selection_mode == "asexual_top50" {
+            next_generation_asexual(
+                &population,
+                &fitnesses,
+                cfg.population_size,
+                cfg.genetics.mutation_rate,
+                cfg.genetics.mutation_strength,
+                cfg.genetics.elitism,
+                &mut rng,
+            )
+        } else {
+            next_generation(
+                &population,
+                &fitnesses,
+                cfg.population_size,
+                cfg.genetics.mutation_rate,
+                cfg.genetics.mutation_strength,
+                cfg.genetics.elitism,
+                &mut rng,
+            )
+        };
     }
 
     println!("Evolution complete.");

@@ -12,7 +12,7 @@ pub mod selection;
 
 pub use genome::Genome;
 pub use mutation::{crossover, mutate};
-pub use selection::{next_generation, tournament_select};
+pub use selection::{next_generation, next_generation_asexual, tournament_select};
 
 /// Configuration for genetic algorithm operations.
 ///
@@ -32,6 +32,13 @@ pub struct GeneticsConfig {
     pub elitism: usize,
     /// Tournament size (k) for selection
     pub tournament_k: usize,
+    /// Selection mode: "tournament" or "asexual_top50"
+    #[serde(default = "default_selection_mode")]
+    pub selection_mode: String,
+}
+
+fn default_selection_mode() -> String {
+    "asexual_top50".to_string()
 }
 
 impl Default for GeneticsConfig {
@@ -43,6 +50,7 @@ impl Default for GeneticsConfig {
             mutation_strength: 0.1,
             elitism: 5,
             tournament_k: 5,
+            selection_mode: "asexual_top50".to_string(),
         }
     }
 }

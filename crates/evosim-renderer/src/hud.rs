@@ -8,7 +8,6 @@ pub struct HudText;
 
 /// Spawns the top-left HUD panel with an empty text placeholder.
 pub fn setup_hud(mut commands: Commands) {
-    // Outer panel: dark semi-transparent background
     commands
         .spawn((
             Node {
@@ -38,23 +37,25 @@ pub fn update_hud_system(
     state: Res<SimulationState>,
     mut query: Query<&mut Text, With<HudText>>,
 ) {
-    let paused_tag = if state.paused { " [PAUSED]" } else { "" };
+    let height = state.creature.max_height;
+    let climbed = (height - 3.0_f32).max(0.0); // climbed above START_HEIGHT
+    let time_s = state.step_count as f32 * 0.016;
+    let max_time = state.max_steps as f32 * 0.016;
+
+    let status = if state.evaluation_done {
+        "DONE".to_string()
+    } else if state.paused {
+        "▶ [SPACE]".to_string()
+    } else {
+        format!("{:.1}s / {:.1}s", time_s, max_time)
+    };
+
     let content = format!(
-        "evosim{}\n\
-         ━━━━━━━━━━━━━━\n\
-         Gen:     {:04}\n\
-         Fitness: {:.3}\n\
-         Step:    {:06}\n\
-         Speed:   {:.1}x\n\
-         ━━━━━━━━━━━━━━\n\
-         [SPACE] pause\n\
-         [↑↓]   speed\n\
-         [R]    reset",
-        paused_tag,
+        "Gen {:04}  fit {:.1}\nHauteur {:.1}m  (grimpe {:.1}m)\n{status}  [R] reset  [D] debug",
         state.generation,
-        state.fitness,
-        state.step_count,
-        state.speed_multiplier,
+        state.champion_fitness,
+        height,
+        climbed,
     );
 
     for mut text in &mut query {

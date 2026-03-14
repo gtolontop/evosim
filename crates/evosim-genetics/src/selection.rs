@@ -118,6 +118,62 @@ pub fn next_generation(
     next_gen
 }
 
+/// Generates the next generation using top-50% asexual reproduction (Code BH style).
+///
+/// The top half of the population (by fitness) each produce one mutated offspring.
+/// The top `elitism` genomes are preserved without mutation.
+pub fn next_generation_asexual(
+    genomes: &[Genome],
+    fitnesses: &[f32],
+    pop_size: usize,
+    mutation_rate: f32,
+    mutation_strength: f32,
+    elitism: usize,
+    rng: &mut impl Rng,
+) -> Vec<Genome> {
+    assert_eq!(
+        genomes.len(),
+        fitnesses.len(),
+        "genomes and fitnesses must have the same length"
+    );
+
+    // Sort by fitness descending
+    let mut indexed: Vec<(usize, f32)> = fitnesses
+        .iter()
+        .enumerate()
+        .map(|(i, &f)| (i, f))
+        .collect();
+    indexed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    let mut next_gen = Vec::with_capacity(pop_size);
+
+    // Elitism: copy top genomes unchanged
+    for i in 0..elitism.min(genomes.len()) {
+        next_gen.push(genomes[indexed[i].0].clone());
+    }
+
+    // Top 50% reproduce asexually with mutations (no crossover)
+    let top_half = indexed.len() / 2;
+    while next_gen.len() < pop_size {
+        for i in 0..top_half.max(1) {
+            if next_gen.len() >= pop_size {
+                break;
+            }
+            let parent_idx = indexed[i].0;
+            let offspring = mutation::mutate(
+                &genomes[parent_idx],
+                mutation_rate,
+                mutation_strength,
+                rng,
+            );
+            next_gen.push(offspring);
+        }
+    }
+
+    next_gen.truncate(pop_size);
+    next_gen
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
