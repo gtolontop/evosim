@@ -27,5 +27,14 @@ pub const GRIP_DIST: f32 = 0.25;
 /// Y height at which creatures spawn on the wall.
 pub const START_HEIGHT: f32 = 3.0;
 
-/// Fitness penalty per unit of total creature mass.
+/// Fitness penalty per unit of total creature mass (K2).
 pub const MASS_PENALTY: f32 = 0.002;
+
+/// Fitness penalty per unit of accumulated energy spent (K1).
+pub const ENERGY_PENALTY: f32 = 0.001;
+
+/// Fitness penalty per unit of accumulated grip-impact v² (K3).
+pub const IMPACT_PENALTY: f32 = 0.5;
+
+/// Minimum distance between non-connected particles (self-collision).
+pub const SELF_COLLISION_RADIUS: f32 = 0.2;

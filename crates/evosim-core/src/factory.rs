@@ -40,6 +40,19 @@
 //! | 13 | knee_B      | Knee B          |
 //! | 14 | foot_B      | Foot B (grip)   |
 //!
+//! ## Muscle layout (34 total)
+//!
+//! | #     | Type             | Description                         |
+//! |-------|------------------|-------------------------------------|
+//! | 0–1   | Spine bones      | upper/lower spine                   |
+//! | 2–7   | Structural bones | clavicles, pelvis, bars             |
+//! | 8–15  | Limb bones       | rigid arm/leg segments              |
+//! | 16–17 | Cross-stability  | torso diagonals                     |
+//! | 18–21 | Arm A muscles    | deltoid, grand dorsal, biceps, triceps |
+//! | 22–25 | Arm B muscles    | (mirror)                            |
+//! | 26–29 | Leg A muscles    | hip flexor, glute, quad, hamstring  |
+//! | 30–33 | Leg B muscles    | (mirror)                            |
+//!
 //! ## Gene layout (40 genes)
 //!
 //! | #     | Field              | Range      |
@@ -210,36 +223,67 @@ impl CreatureFactory {
         muscles.push(Muscle::bone(3, 4, dist(3, 4)));   // 6: shoulder bar
         muscles.push(Muscle::bone(9, 10, dist(9, 10))); // 7: hip bar
 
-        // Active muscles (indices 8–15)
-        let add_limb = |muscles: &mut Vec<Muscle>,
-                        attach: usize,
-                        joint: usize,
-                        end: usize,
-                        lg: &LimbGenes| {
-            let prox_rest = dist(attach, joint);
-            let dist_rest = dist(joint, end);
-            // Proximal: evolved phase and force
-            muscles.push(Muscle::muscle(
-                attach, joint,
-                prox_rest, prox_rest * lg.contraction,
-                lg.upper_force, lg.phase, lg.amplitude,
-            ));
-            // Distal: phase + PI/2, evolved force
-            muscles.push(Muscle::muscle(
-                joint, end,
-                dist_rest, dist_rest * lg.contraction,
-                lg.lower_force, lg.phase + std::f32::consts::FRAC_PI_2, lg.amplitude,
-            ));
+        // Limb segment bones (indices 8–15) — rigid, maintain limb lengths
+        let add_limb_bones = |muscles: &mut Vec<Muscle>,
+                              attach: usize, joint: usize, end: usize| {
+            muscles.push(Muscle::bone(attach, joint, dist(attach, joint)));
+            muscles.push(Muscle::bone(joint, end, dist(joint, end)));
         };
-
-        add_limb(&mut muscles, 3, 5, 6, &arm_a);    // 8, 9: arm A
-        add_limb(&mut muscles, 4, 7, 8, &arm_b);    // 10, 11: arm B
-        add_limb(&mut muscles, 9, 11, 12, &leg_a);   // 12, 13: leg A
-        add_limb(&mut muscles, 10, 13, 14, &leg_b);  // 14, 15: leg B
+        add_limb_bones(&mut muscles, 3, 5, 6);   // 8–9:   arm A
+        add_limb_bones(&mut muscles, 4, 7, 8);   // 10–11: arm B
+        add_limb_bones(&mut muscles, 9, 11, 12);  // 12–13: leg A
+        add_limb_bones(&mut muscles, 10, 13, 14); // 14–15: leg B
 
         // Cross-stability bones (indices 16–17)
         muscles.push(Muscle::bone(3, 9, dist(3, 9)));   // 16: left torso
         muscles.push(Muscle::bone(4, 10, dist(4, 10))); // 17: right torso
+
+        // Active muscles (indices 18–33) — antagonist pairs crossing joints
+        //
+        // Each limb gets 4 muscles: agonist + antagonist for proximal joint,
+        // agonist + antagonist for distal joint.
+        //   spine_near: spine particle close to the limb (0 for arms, 2 for legs)
+        //   spine_far:  spine particle further away (1 = spine_mid for all)
+        use std::f32::consts::PI;
+
+        let add_limb_muscles = |muscles: &mut Vec<Muscle>,
+                                spine_near: usize,
+                                spine_far: usize,
+                                attach: usize,
+                                joint: usize,
+                                end: usize,
+                                lg: &LimbGenes| {
+            let frac_pi_2 = std::f32::consts::FRAC_PI_2;
+            // Proximal joint: agonist (spine_near→joint) + antagonist (spine_far→joint)
+            let r0 = dist(spine_near, joint);
+            let r1 = dist(spine_far, joint);
+            muscles.push(Muscle::muscle(
+                spine_near, joint, r0, r0 * lg.contraction,
+                lg.upper_force, lg.phase, lg.amplitude,
+            ));
+            muscles.push(Muscle::muscle(
+                spine_far, joint, r1, r1 * lg.contraction,
+                lg.upper_force, lg.phase + PI, lg.amplitude,
+            ));
+            // Distal joint: agonist (attach→end) + antagonist (spine_near→end)
+            let r2 = dist(attach, end);
+            let r3 = dist(spine_near, end);
+            muscles.push(Muscle::muscle(
+                attach, end, r2, r2 * lg.contraction,
+                lg.lower_force, lg.phase + frac_pi_2, lg.amplitude,
+            ));
+            muscles.push(Muscle::muscle(
+                spine_near, end, r3, r3 * lg.contraction,
+                lg.lower_force, lg.phase + frac_pi_2 + PI, lg.amplitude,
+            ));
+        };
+
+        // Arms: spine_near=0 (spine_top), spine_far=1 (spine_mid)
+        add_limb_muscles(&mut muscles, 0, 1, 3, 5, 6, &arm_a);   // 18–21
+        add_limb_muscles(&mut muscles, 0, 1, 4, 7, 8, &arm_b);   // 22–25
+        // Legs: spine_near=2 (spine_bot), spine_far=1 (spine_mid)
+        add_limb_muscles(&mut muscles, 2, 1, 9, 11, 12, &leg_a);  // 26–29
+        add_limb_muscles(&mut muscles, 2, 1, 10, 13, 14, &leg_b); // 30–33
 
         // ── Mass from link lengths ────────────────────────────────────────
         let mut link_sums = vec![0.0_f32; particles.len()];

@@ -1,6 +1,9 @@
 use glam::Vec2;
 
-use crate::constants::{CONSTRAINT_ITERS, GRIP_DIST, MASS_PENALTY, START_HEIGHT, WALL_X};
+use crate::constants::{
+    CONSTRAINT_ITERS, ENERGY_PENALTY, GRIP_DIST, IMPACT_PENALTY, MASS_PENALTY,
+    SELF_COLLISION_RADIUS, START_HEIGHT, WALL_X,
+};
 use crate::muscle::Muscle;
 use crate::particle::Particle;
 
@@ -21,6 +24,8 @@ pub struct Creature {
     pub max_height: f32,
     /// `(particle_index, grip_phase_offset)` for each limb endpoint.
     pub grip_phases: Vec<(usize, f32)>,
+    /// Accumulated grip-impact energy (v² at moment of gripping).
+    pub total_impact: f32,
     /// Cached sum of all particle masses (set once at construction).
     pub total_mass: f32,
 }
@@ -35,6 +40,7 @@ impl Creature {
             clock_speed: 1.0,
             fitness: 0.0,
             total_energy_spent: 0.0,
+            total_impact: 0.0,
             max_height: 0.0,
             grip_phases: Vec::new(),
             total_mass,
@@ -68,6 +74,9 @@ impl Creature {
             }
         }
 
+        // 4b. Self-collision (repulse non-connected particles that overlap)
+        self.resolve_self_collisions();
+
         // 5. Ground collision
         for particle in &mut self.particles {
             particle.resolve_ground();
@@ -91,6 +100,43 @@ impl Creature {
         if total_mass > 0.0 { weighted_sum / total_mass } else { Vec2::ZERO }
     }
 
+    /// Repulse non-connected particle pairs that are closer than SELF_COLLISION_RADIUS.
+    fn resolve_self_collisions(&mut self) {
+        let n = self.particles.len();
+        for i in 0..n {
+            for j in (i + 1)..n {
+                if self.particles[i].pinned && self.particles[j].pinned {
+                    continue;
+                }
+                // Skip pairs connected by a muscle (already constrained).
+                let connected = self.muscles.iter().any(|m| {
+                    (m.a == i && m.b == j) || (m.a == j && m.b == i)
+                });
+                if connected {
+                    continue;
+                }
+
+                let delta = self.particles[j].pos - self.particles[i].pos;
+                let dist_sq = delta.length_squared();
+                let min_dist = SELF_COLLISION_RADIUS;
+                if dist_sq < min_dist * min_dist && dist_sq > 1e-8 {
+                    let dist = dist_sq.sqrt();
+                    let overlap = min_dist - dist;
+                    let dir = delta / dist;
+                    let mass_i = self.particles[i].mass;
+                    let mass_j = self.particles[j].mass;
+                    let total = mass_i + mass_j;
+                    if !self.particles[i].pinned {
+                        self.particles[i].pos -= dir * overlap * (mass_j / total);
+                    }
+                    if !self.particles[j].pinned {
+                        self.particles[j].pos += dir * overlap * (mass_i / total);
+                    }
+                }
+            }
+        }
+    }
+
     /// Clock-based grip: each endpoint has its own phase offset.
     ///
     /// `grip_signal = sin(clock + phase) * 0.5 + 0.5`
@@ -107,6 +153,9 @@ impl Creature {
             let should_grip = near_wall && grip_signal > 0.5;
 
             if should_grip && !self.particles[p_idx].pinned {
+                // Accumulate grip-impact penalty (v² at moment of contact).
+                let vel = self.particles[p_idx].pos - self.particles[p_idx].prev_pos;
+                self.total_impact += vel.length_squared();
                 // Just gripped — zero velocity, snap to wall.
                 self.particles[p_idx].pos.x = WALL_X;
                 self.particles[p_idx].prev_pos = self.particles[p_idx].pos;
@@ -121,24 +170,39 @@ impl Creature {
         }
     }
 
-    /// Fitness — only height ABOVE spawn counts, and only while gripping.
+    /// Fitness = Distance − K1·Energy − K2·Mass − K3·Impact
     ///
-    /// Staying at spawn height = 0 fitness.  Must climb to score.
+    /// - Distance: height climbed above spawn (only recorded while gripping & upright)
+    /// - Energy:   cumulative muscle contraction cost (anti-spam)
+    /// - Mass:     total body mass (anti-musclor)
+    /// - Impact:   cumulative v² at grip contact (anti-jump)
     pub fn update_fitness(&mut self, energy_cost: f32) {
         self.total_energy_spent += energy_cost;
         let com = self.center_of_mass();
 
-        let has_grip = self.grip_phases.iter().any(|&(i, _)| self.particles[i].pinned);
-        if has_grip && com.y > self.max_height {
+        let grip_count = self.grip_phases.iter()
+            .filter(|&&(i, _)| self.particles[i].pinned)
+            .count();
+        let has_grip = grip_count > 0;
+
+        // Spine orientation check (particle 0 = spine_top, 2 = spine_bot).
+        let upright = if self.particles.len() >= 3 {
+            self.particles[0].pos.y - self.particles[2].pos.y > 0.3
+        } else {
+            true
+        };
+
+        // Only record height when upright AND using ≥ 2 grip points (or all available).
+        let min_grips = self.grip_phases.len().min(2);
+        if has_grip && upright && grip_count >= min_grips && com.y > self.max_height {
             self.max_height = com.y;
         }
 
         let climbed = (self.max_height - START_HEIGHT).max(0.0);
-        let wall_dist = com.x.max(0.0);
-        self.fitness = climbed * 2.0
-            - wall_dist * 5.0
-            - self.total_energy_spent * 0.001
-            - self.total_mass * MASS_PENALTY;
+        self.fitness = climbed
+            - self.total_energy_spent * ENERGY_PENALTY
+            - self.total_mass * MASS_PENALTY
+            - self.total_impact * IMPACT_PENALTY;
     }
 }
 

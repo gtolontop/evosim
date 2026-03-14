@@ -31,6 +31,10 @@ evosim-genetics = { path = "crates/evosim-genetics" }
 evosim-renderer = { path = "crates/evosim-renderer" }
 evosim-cli = { path = "crates/evosim-cli" }
 
+# Dev: optimize dependencies (Bevy, glam) but keep own code at -O0.
+[profile.dev.package."*"]
+opt-level = 2
+
 [profile.release]
 opt-level = 3
 lto = "thin"

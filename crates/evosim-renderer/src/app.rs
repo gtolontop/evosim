@@ -3,7 +3,7 @@ use evosim_core::CreatureFactory;
 use evosim_genetics::Genome;
 
 use crate::{
-    background::draw_background,
+    background::{draw_background, setup_trunk},
     camera::{camera_follow_system, setup_camera},
     hud::{setup_hud, update_hud_system},
     input::{input_system, StoredGenome},
@@ -56,7 +56,7 @@ pub fn run_renderer(genome: &Genome, generation: u32, fitness: f32) {
         .insert_resource(StoredGenome(genome.clone()))
         .insert_resource(MuscleRenderCache::default())
         .insert_resource(TrailBuffer::default())
-        .add_systems(Startup, (setup_camera, setup_hud, setup_render_cache))
+        .add_systems(Startup, (setup_camera, setup_hud, setup_render_cache, setup_trunk))
         .add_systems(
             Update,
             (
