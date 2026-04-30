@@ -3,25 +3,26 @@ use bevy::prelude::*;
 #[derive(Component)]
 pub(crate) struct TrunkMarker;
 
-/// Spawns the tree trunk as a mesh entity at z = -10 so it renders behind
-/// the creature. Called once at Startup.
+/// Spawns a subtle wall surface behind the creature at z = -10.
+/// Thin vertical strip — the creature climbs along this surface.
 pub fn setup_trunk(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    // Single tall rectangle — 1.2 world-units wide, 200 tall (enough for any climb)
-    let trunk_width = 1.2_f32;
-    let trunk_height = 200.0_f32;
-    let mesh = meshes.add(Rectangle::new(trunk_width, trunk_height));
+    // Thin wall surface — just a subtle backdrop, not a prominent trunk.
+    let wall_width = 1.2_f32;
+    let wall_height = 500.0_f32;
+    let wall_center_x = 0.0_f32;
+    let mesh = meshes.add(Rectangle::new(wall_width, wall_height));
     let mat = materials.add(ColorMaterial {
-        color: Color::srgba(0.45, 0.27, 0.09, 0.85),
+        color: Color::srgba(0.25, 0.25, 0.28, 0.3),
         ..default()
     });
     commands.spawn((
         Mesh2d(mesh),
         MeshMaterial2d(mat),
-        Transform::from_translation(Vec3::new(0.0, trunk_height / 2.0, -10.0)),
+        Transform::from_translation(Vec3::new(wall_center_x, wall_height / 2.0, -10.0)),
         TrunkMarker,
     ));
 }
