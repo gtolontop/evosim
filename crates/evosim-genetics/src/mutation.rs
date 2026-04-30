@@ -3,21 +3,17 @@ use rand_distr::Normal;
 
 use crate::genome::Genome;
 
+/// Per-gene probability of a macro-mutation (complete randomisation).
+const MACRO_MUTATION_RATE: f32 = 0.02;
+
 /// Produces a mutated copy of the given genome.
 ///
-/// Each gene has a probability of `rate` (0.0–1.0) of being perturbed by
-/// adding Gaussian noise. The result is clamped to [-1.0, 1.0].
+/// Each gene can be affected by:
+/// 1. **Macro-mutation** (2% chance): completely randomised to [-1, 1]
+/// 2. **Normal mutation** (`rate` chance): Gaussian noise added
 ///
-/// # Arguments
-///
-/// * `genome`   — The source genome to mutate.
-/// * `rate`     — Per-gene mutation probability in the range `[0.0, 1.0]`.
-/// * `strength` — Standard deviation of the Gaussian noise.
-/// * `rng`      — The random number generator to use.
-///
-/// # Returns
-///
-/// A new [`Genome`] with mutations applied.
+/// Macro-mutations create occasional large jumps that can unlock entirely
+/// new body plans or movement strategies.
 pub fn mutate(genome: &Genome, rate: f32, strength: f32, rng: &mut impl Rng) -> Genome {
     let normal = Normal::new(0.0, strength)
         .expect("failed to create normal distribution for mutation");
@@ -26,7 +22,9 @@ pub fn mutate(genome: &Genome, rate: f32, strength: f32, rng: &mut impl Rng) -> 
         .genes()
         .iter()
         .map(|&gene| {
-            if rng.gen::<f32>() < rate {
+            if rng.gen::<f32>() < MACRO_MUTATION_RATE {
+                rng.gen_range(-1.0_f32..=1.0)
+            } else if rng.gen::<f32>() < rate {
                 let noise: f32 = rng.sample(normal);
                 (gene + noise).clamp(-1.0, 1.0)
             } else {
