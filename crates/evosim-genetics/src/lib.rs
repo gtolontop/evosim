@@ -45,7 +45,7 @@ impl Default for GeneticsConfig {
     fn default() -> Self {
         Self {
             population_size: 64,
-            genome_len: 20,
+            genome_len: 52,
             mutation_rate: 0.05,
             mutation_strength: 0.1,
             elitism: 5,
