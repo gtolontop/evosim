@@ -1,127 +1,86 @@
+use crate::constants::{MAX_CONTRACTION, MUSCLE_DENSITY};
 use crate::particle::Particle;
 
-/// A spring-like connection between two [`super::particle::Particle`]s.
+/// A spring-like connection between two [`Particle`]s.
 ///
-/// Muscles can oscillate over time to produce locomotion. When `is_bone` is
-/// `true` the muscle acts as a rigid structural element that does not
-/// oscillate.
+/// When `is_bone` is true the muscle acts as a rigid structural element.
+/// Active muscles have a `max_force` that also determines their mass
+/// (heavier muscles = more force but more weight).
 #[derive(Debug, Clone)]
 pub struct Muscle {
-    /// Index of the first particle in the owning creature's particle list.
     pub a: usize,
-    /// Index of the second particle in the owning creature's particle list.
     pub b: usize,
-    /// Natural (rest) length of the muscle when no oscillation is applied.
     pub rest_len: f32,
-    /// Minimum allowed length the muscle can contract to.
-    pub min_len: f32,
-    /// Spring stiffness coefficient. Higher values make the muscle stiffer.
     pub stiffness: f32,
-    /// Phase offset (in radians) for the oscillation cycle.
-    pub phase_offset: f32,
-    /// Amplitude of length oscillation around `rest_len`.
-    pub amplitude: f32,
-    /// If `true`, this muscle is a rigid bone and does not oscillate.
     pub is_bone: bool,
-    /// Current activation level in `[0, amplitude]`, driven by the CPG signal.
-    pub current_activation: f32,
-    /// Precomputed sin(phase_offset) for fast activation.
-    sin_phase: f32,
-    /// Precomputed cos(phase_offset) for fast activation.
-    cos_phase: f32,
+    /// Maximum force this muscle can exert. Also determines muscle mass.
+    pub max_force: f32,
+    /// Current contraction ratio in [0, 1]. Driven by keyframe interpolation.
+    pub current_contraction: f32,
+    /// Which muscle group this belongs to (0–7), or `u8::MAX` for bones.
+    pub group: u8,
 }
 
-/// Creates a rigid bone constraint between two particles.
-///
-/// Bones have full stiffness (`1.0`), no oscillation, and `is_bone` set to
-/// `true`.
 impl Muscle {
+    /// Creates a rigid bone constraint.
     pub fn bone(a: usize, b: usize, rest_len: f32) -> Self {
         Self {
             a,
             b,
             rest_len,
-            min_len: rest_len,
             stiffness: 1.0,
-            phase_offset: 0.0,
-            amplitude: 0.0,
             is_bone: true,
-            current_activation: 0.0,
-            sin_phase: 0.0,
-            cos_phase: 1.0,
+            max_force: 0.0,
+            current_contraction: 0.0,
+            group: u8::MAX,
         }
     }
 
-    /// Creates an oscillating muscle between two particles.
-    ///
-    /// The muscle contracts between `rest_len` and `min_len` according to a
-    /// sinusoidal CPG signal controlled by `phase_offset` and `amplitude`.
-    pub fn muscle(
-        a: usize,
-        b: usize,
-        rest_len: f32,
-        min_len: f32,
-        stiffness: f32,
-        phase_offset: f32,
-        amplitude: f32,
-    ) -> Self {
-        let (sin_phase, cos_phase) = phase_offset.sin_cos();
+    /// Creates an active muscle with a maximum force.
+    pub fn muscle(a: usize, b: usize, rest_len: f32, max_force: f32, group: u8) -> Self {
         Self {
             a,
             b,
             rest_len,
-            min_len,
-            stiffness,
-            phase_offset,
-            amplitude,
+            stiffness: max_force,
             is_bone: false,
-            current_activation: 0.0,
-            sin_phase,
-            cos_phase,
+            max_force,
+            current_contraction: 0.0,
+            group,
         }
     }
 
-    /// Updates the muscle's activation level using a sinusoidal CPG signal.
-    ///
-    /// The activation oscillates between `0` and `amplitude` based on the
-    /// creature's internal `clock` plus this muscle's `phase_offset`.
-    /// Bones are unaffected.
-    pub fn update_activation(&mut self, clock: f32) {
-        if self.is_bone {
-            return;
-        }
-        self.current_activation =
-            ((clock + self.phase_offset).sin() * 0.5 + 0.5) * self.amplitude;
-    }
-
-    /// Fast activation using precomputed sin/cos of clock.
-    /// Uses angle-addition: sin(clock+phase) = sin_c*cos_p + cos_c*sin_p
+    /// Sets the contraction ratio (called by the keyframe interpolation system).
     #[inline]
-    pub fn update_activation_fast(&mut self, sin_c: f32, cos_c: f32) {
+    pub fn set_contraction(&mut self, contraction: f32) {
         if self.is_bone {
             return;
         }
-        let sin_val = sin_c * self.cos_phase + cos_c * self.sin_phase;
-        self.current_activation = (sin_val * 0.5 + 0.5) * self.amplitude;
+        self.current_contraction = contraction.clamp(0.0, 1.0);
     }
 
-    /// Returns the current target length based on activation.
-    ///
-    /// Linearly interpolates between `rest_len` (at activation 0) and
-    /// `min_len` (at activation 1).
+    /// Current target length based on contraction.
+    /// Fully relaxed (0) → rest_len. Fully contracted (1) → rest_len * (1 - MAX_CONTRACTION).
+    #[inline]
     pub fn target_len(&self) -> f32 {
-        self.rest_len + (self.min_len - self.rest_len) * self.current_activation
+        self.rest_len * (1.0 - self.current_contraction * MAX_CONTRACTION)
     }
 
-    /// Resolves the constraint by adjusting the two connected particles.
-    ///
-    /// Applies mass-weighted position corrections scaled by `stiffness` to
-    /// push/pull the particles toward the target length. Returns the energy
-    /// cost of this activation (always `0.0` for bones).
+    /// Mass of this muscle: force × rest_len × density. Zero for bones.
+    #[inline]
+    pub fn muscle_mass(&self) -> f32 {
+        if self.is_bone {
+            0.0
+        } else {
+            self.max_force * self.rest_len * MUSCLE_DENSITY
+        }
+    }
+
+    /// Resolves the constraint by adjusting connected particles.
+    /// Returns the energy cost (0 for bones).
     pub fn resolve(&self, particles: &mut [Particle]) -> f32 {
         let pa = particles[self.a].pos;
         let pb = particles[self.b].pos;
-
         let delta = pb - pa;
         let distance = delta.length();
 
@@ -147,7 +106,7 @@ impl Muscle {
         if self.is_bone {
             0.0
         } else {
-            self.current_activation * error.abs() * self.stiffness
+            self.current_contraction * error.abs() * self.stiffness
         }
     }
 }
@@ -163,31 +122,32 @@ mod tests {
             Particle::new(3.0, 0.0, 1.0),
         ];
         let bone = Muscle::bone(0, 1, 1.0);
-
         let energy = bone.resolve(&mut particles);
-
         let new_dist = (particles[1].pos - particles[0].pos).length();
         assert!(
             (new_dist - 1.0).abs() < 0.1,
-            "bone should pull particles closer to rest_len, got dist={}",
-            new_dist
+            "bone should pull particles closer, got dist={new_dist}"
         );
-        assert_eq!(energy, 0.0, "bones should have zero energy cost");
+        assert_eq!(energy, 0.0);
     }
 
     #[test]
-    fn muscle_activation_oscillates() {
-        let mut m = Muscle::muscle(0, 1, 2.0, 1.0, 0.5, 0.0, 1.0);
+    fn muscle_contraction_changes_target() {
+        let mut m = Muscle::muscle(0, 1, 2.0, 0.5, 0);
+        assert!((m.target_len() - 2.0).abs() < 1e-5);
+        m.set_contraction(1.0);
+        assert!(m.target_len() < 2.0);
+    }
 
-        m.update_activation(0.0);
-        let a0 = m.current_activation;
+    #[test]
+    fn muscle_mass_is_positive() {
+        let m = Muscle::muscle(0, 1, 2.0, 0.5, 0);
+        assert!(m.muscle_mass() > 0.0);
+    }
 
-        m.update_activation(std::f32::consts::FRAC_PI_2);
-        let a1 = m.current_activation;
-
-        assert!(
-            (a1 - a0).abs() > 0.01,
-            "activation should change with clock, a0={a0}, a1={a1}"
-        );
+    #[test]
+    fn bone_has_zero_muscle_mass() {
+        let b = Muscle::bone(0, 1, 1.0);
+        assert_eq!(b.muscle_mass(), 0.0);
     }
 }
