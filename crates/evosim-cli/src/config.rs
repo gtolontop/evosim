@@ -51,11 +51,11 @@ impl Default for SimConfig {
         Self {
             population_size: 1000,
             generations: 500,
-            sim_steps: 400,
+            sim_steps: 600,
             dt: 0.016,
             genetics: GeneticsConfig {
                 population_size: 1000,
-                genome_len: 40,
+                genome_len: 52,
                 mutation_rate: 0.15,
                 mutation_strength: 0.3,
                 elitism: 10,
