@@ -1,80 +1,79 @@
-//! Factory for translating a [`Genome`] into a 15-particle humanoid wall-climbing [`Creature`].
+//! Factory for translating a [`Genome`] into a 16-particle humanoid wall-climbing [`Creature`].
 //!
 //! ## Morphology
 //!
-//! A vertical spine close to a wall at x=0.  Two shoulders branch from the
-//! upper spine; two hips branch from the lower spine.  Each limb has a joint
-//! (elbow/knee) and an endpoint (hand/foot) that can grip the wall.
+//! A symmetric humanoid skeleton with clavicles, arms, spine, pelvis, legs, and a decorative tail.
+//! Matches the anatomical reference images: bones in cream, muscles in salmon pink.
 //!
 //! ```text
 //!  WALL            body
 //!    |
-//!    [hand_A]─[elbow_A]─[shoulder_A]
-//!    |                       ╲
-//!    [hand_B]─[elbow_B]─[shoulder_B]─[spine_top]
-//!    |                                   │
+//!    [hand_L]─[elbow_L]─[shoulder_L]──┐
+//!    |                                 [neck]
+//!    [hand_R]─[elbow_R]─[shoulder_R]──┘  │
 //!    |                               [spine_mid]
 //!    |                                   │
-//!    [foot_A]─[knee_A]──[hip_A]──────[spine_bot]
-//!    |                       ╱
-//!    [foot_B]─[knee_B]──[hip_B]
+//!    [foot_L]─[knee_L]──[hip_L]──────[pelvis]──[tail]
+//!    |                       ╲          ╱
+//!    [foot_R]─[knee_R]──[hip_R]─────┘
 //! ```
 //!
-//! ## Particle layout (15 particles)
+//! ## Particle layout (16 particles)
 //!
-//! | #  | Name        | Role            |
-//! |----|-------------|-----------------|
-//! | 0  | spine_top   | Upper spine     |
-//! | 1  | spine_mid   | Mid spine       |
-//! | 2  | spine_bot   | Lower spine     |
-//! | 3  | shoulder_A  | Shoulder A      |
-//! | 4  | shoulder_B  | Shoulder B      |
-//! | 5  | elbow_A     | Elbow A         |
-//! | 6  | hand_A      | Hand A (grip)   |
-//! | 7  | elbow_B     | Elbow B         |
-//! | 8  | hand_B      | Hand B (grip)   |
-//! | 9  | hip_A       | Hip A           |
-//! | 10 | hip_B       | Hip B           |
-//! | 11 | knee_A      | Knee A          |
-//! | 12 | foot_A      | Foot A (grip)   |
-//! | 13 | knee_B      | Knee B          |
-//! | 14 | foot_B      | Foot B (grip)   |
+//! | #  | Name          | Role              |
+//! |----|---------------|-------------------|
+//! | 0  | neck          | Top of spine      |
+//! | 1  | spine_mid     | Mid spine         |
+//! | 2  | pelvis_center | Bottom of spine   |
+//! | 3  | shoulder_L    | Left shoulder     |
+//! | 4  | shoulder_R    | Right shoulder    |
+//! | 5  | elbow_L       | Left elbow        |
+//! | 6  | elbow_R       | Right elbow       |
+//! | 7  | hand_L        | Left hand (grip)  |
+//! | 8  | hand_R        | Right hand (grip) |
+//! | 9  | hip_L         | Left hip          |
+//! | 10 | hip_R         | Right hip         |
+//! | 11 | knee_L        | Left knee         |
+//! | 12 | knee_R        | Right knee        |
+//! | 13 | foot_L        | Left foot (grip)  |
+//! | 14 | foot_R        | Right foot (grip) |
+//! | 15 | tail_tip      | Decorative tail   |
 //!
-//! ## Muscle layout (34 total)
+//! ## Spring layout (35 total)
 //!
-//! | #     | Type             | Description                         |
-//! |-------|------------------|-------------------------------------|
-//! | 0–1   | Spine bones      | upper/lower spine                   |
-//! | 2–7   | Structural bones | clavicles, pelvis, bars             |
-//! | 8–15  | Limb bones       | rigid arm/leg segments              |
-//! | 16–17 | Cross-stability  | torso diagonals                     |
-//! | 18–21 | Arm A muscles    | deltoid, grand dorsal, biceps, triceps |
-//! | 22–25 | Arm B muscles    | (mirror)                            |
-//! | 26–29 | Leg A muscles    | hip flexor, glute, quad, hamstring  |
-//! | 30–33 | Leg B muscles    | (mirror)                            |
+//! | #     | Type              | Description                          |
+//! |-------|-------------------|--------------------------------------|
+//! | 0–16  | Bones (rigid)     | Skeleton structure + tail            |
+//! | 17–18 | Cross-stability   | Torso diagonals (thin, structural)   |
+//! | 19–26 | Left muscles      | Deltoid, dorsal, bicep, tricep, etc. |
+//! | 27–34 | Right muscles     | Mirror of left side                  |
 //!
-//! ## Gene layout (40 genes)
+//! ## Gene layout (52 genes)
 //!
-//! | #     | Field              | Range      |
-//! |-------|--------------------|------------|
-//! | 0     | spine_length       | [1.0, 3.0] |
-//! | 1     | spine_split        | [0.3, 0.7] |
-//! | 2     | shoulder_spread    | [0.3, 1.2] |
-//! | 3     | hip_spread         | [0.2, 1.0] |
-//! | 4     | body_offset_x      | [0.5, 1.5] |
-//! | 5     | clock_speed        | [0.3, 4.0] |
-//! | 6–13  | arm A              | per-limb   |
-//! | 14–21 | arm B              | per-limb   |
-//! | 22–29 | leg A              | per-limb   |
-//! | 30–37 | leg B              | per-limb   |
-//! | 38–39 | reserved           |            |
+//! | #     | Field              | Range        |
+//! |-------|--------------------|--------------|
+//! | 0     | spine_length       | [1.0, 3.0]   |
+//! | 1     | shoulder_spread    | [0.3, 1.2]   |
+//! | 2     | hip_spread         | [0.2, 1.0]   |
+//! | 3     | upper_arm_len      | [0.3, 1.5]   |
+//! | 4     | forearm_len        | [0.3, 1.5]   |
+//! | 5     | thigh_len          | [0.3, 1.5]   |
+//! | 6     | shin_len           | [0.3, 1.5]   |
+//! | 7     | tail_len           | [0.3, 1.0]   |
+//! | 8–15  | muscle max_force   | [0.1, 1.0]   |
+//! | 16    | clock_speed        | [0.3, 4.0]   |
+//! | 17    | grip_phase_hands   | [0.0, TAU]   |
+//! | 18    | grip_phase_feet    | [0.0, TAU]   |
+//! | 19    | lr_offset          | [0.0, TAU]   |
+//! | 20–51 | keyframes (4×8)    | [0.0, 1.0]   |
 
 use std::f32::consts::TAU;
 
 use evosim_genetics::Genome;
 
 use crate::{
-    constants::{START_HEIGHT, WALL_X},
+    constants::{MUSCLE_DENSITY, START_HEIGHT, WALL_X},
+    creature::{NUM_KEYFRAMES, NUM_MUSCLE_GROUPS},
     Creature, Muscle, Particle,
 };
 
@@ -82,7 +81,7 @@ pub struct CreatureFactory;
 
 impl CreatureFactory {
     pub fn min_genome_len() -> usize {
-        40
+        52
     }
 
     pub fn build(genome: &Genome) -> Result<Creature, String> {
@@ -99,214 +98,216 @@ impl CreatureFactory {
             (g[idx] + 1.0) / 2.0 * (max - min) + min
         };
 
-        // ── Header ────────────────────────────────────────────────────────
+        // ── Body dimensions ─────────────────────────────────────────────
         let spine_length    = r(0, 1.0, 3.0);
-        let spine_split     = r(1, 0.3, 0.7);
-        let shoulder_spread = r(2, 0.3, 1.2);
-        let hip_spread      = r(3, 0.2, 1.0);
-        let body_offset_x   = r(4, 0.5, 1.5);
-        let clock_speed     = r(5, 0.3, 4.0);
+        let shoulder_spread = r(1, 0.3, 1.2);
+        let hip_spread      = r(2, 0.2, 1.0);
+        let upper_arm_len   = r(3, 0.3, 1.5);
+        let forearm_len     = r(4, 0.3, 1.5);
+        let thigh_len       = r(5, 0.3, 1.5);
+        let shin_len        = r(6, 0.3, 1.5);
+        let tail_len        = r(7, 0.3, 1.0);
 
-        // ── Spine positions ───────────────────────────────────────────────
-        let spine_top_y = START_HEIGHT + spine_length * spine_split;
-        let spine_bot_y = START_HEIGHT - spine_length * (1.0 - spine_split);
+        // ── Muscle max forces (8 groups) ────────────────────────────────
+        let muscle_forces: [f32; 8] = [
+            r(8,  0.1, 1.0), // 0: deltoid
+            r(9,  0.1, 1.0), // 1: grand dorsal
+            r(10, 0.1, 1.0), // 2: bicep
+            r(11, 0.1, 1.0), // 3: tricep
+            r(12, 0.1, 1.0), // 4: hip flexor
+            r(13, 0.1, 1.0), // 5: glute
+            r(14, 0.1, 1.0), // 6: quad
+            r(15, 0.1, 1.0), // 7: hamstring
+        ];
 
-        // ── Per-limb gene decoding ────────────────────────────────────────
-        struct LimbGenes {
-            upper_len: f32,
-            lower_len: f32,
-            upper_force: f32,
-            lower_force: f32,
-            amplitude: f32,
-            phase: f32,
-            grip_phase: f32,
-            contraction: f32,
+        // ── Clock + grip ────────────────────────────────────────────────
+        let clock_speed      = r(16, 0.3, 4.0);
+        let grip_phase_hands = r(17, 0.0, TAU);
+        let grip_phase_feet  = r(18, 0.0, TAU);
+        let lr_offset        = r(19, 0.0, TAU);
+
+        // ── Keyframes (4 × 8) ──────────────────────────────────────────
+        let mut keyframes = [[0.0_f32; NUM_MUSCLE_GROUPS]; NUM_KEYFRAMES];
+        for kf in 0..NUM_KEYFRAMES {
+            for grp in 0..NUM_MUSCLE_GROUPS {
+                keyframes[kf][grp] = r(20 + kf * NUM_MUSCLE_GROUPS + grp, 0.0, 1.0);
+            }
         }
 
-        let decode = |base: usize| LimbGenes {
-            upper_len:   r(base,     0.3, 1.5),
-            lower_len:   r(base + 1, 0.3, 1.5),
-            upper_force: r(base + 2, 0.1, 1.0),
-            lower_force: r(base + 3, 0.1, 1.0),
-            amplitude:   r(base + 4, 0.1, 1.0),
-            phase:       r(base + 5, 0.0, TAU),
-            grip_phase:  r(base + 6, 0.0, TAU),
-            contraction: r(base + 7, 0.3, 0.8),
-        };
-
-        let arm_a = decode(6);
-        let arm_b = decode(14);
-        let leg_a = decode(22);
-        let leg_b = decode(30);
-
-        // ── Build particles (15) ──────────────────────────────────────────
-        // Spine: vertical at body_offset_x
-        let spine_top = Particle::new(body_offset_x, spine_top_y, 1.0);
-        let spine_mid = Particle::new(body_offset_x, START_HEIGHT, 1.0);
-        let spine_bot = Particle::new(body_offset_x, spine_bot_y, 1.0);
-
-        // Shoulders: offset vertically from spine_top, slightly toward wall
-        let sh_x = body_offset_x * 0.7;
-        let shoulder_a = Particle::new(sh_x, spine_top_y + shoulder_spread * 0.5, 1.0);
-        let shoulder_b = Particle::new(sh_x, spine_top_y - shoulder_spread * 0.5, 1.0);
-
-        // Hips: offset vertically from spine_bot, slightly toward wall
-        let hip_x = body_offset_x * 0.7;
-        let hip_a = Particle::new(hip_x, spine_bot_y + hip_spread * 0.5, 1.0);
-        let hip_b = Particle::new(hip_x, spine_bot_y - hip_spread * 0.5, 1.0);
-
-        // Helper: place joint (elbow/knee) between attachment and wall endpoint.
-        // Both upper_len and lower_len influence the vertical spread of the limb.
-        let mk_limb = |attach: &Particle, lg: &LimbGenes, y_offset_sign: f32|
-            -> (Particle, Particle)
-        {
-            // Hand/foot: on the wall, offset vertically using both segment lengths
-            let end_y = attach.pos.y + y_offset_sign * (lg.upper_len + lg.lower_len) * 0.2;
-            let end = Particle::new(WALL_X + 0.02, end_y, 1.0);
-
-            // Joint: offset from attachment by upper_len fraction toward endpoint
-            let t = lg.upper_len / (lg.upper_len + lg.lower_len);
-            let jx = attach.pos.x + (end.pos.x - attach.pos.x) * t;
-            let jy = attach.pos.y + (end.pos.y - attach.pos.y) * t;
-            let joint = Particle::new(jx, jy, 1.0);
-
-            (joint, end)
-        };
-
-        // Arms reach upward from shoulders
-        let (elbow_a, hand_a) = mk_limb(&shoulder_a, &arm_a, 1.0);
-        let (elbow_b, hand_b) = mk_limb(&shoulder_b, &arm_b, 1.0);
-        // Legs reach downward from hips
-        let (knee_a, foot_a) = mk_limb(&hip_a, &leg_a, -1.0);
-        let (knee_b, foot_b) = mk_limb(&hip_b, &leg_b, -1.0);
+        // ── Build particles (16) ────────────────────────────────────────
+        let body_x = 1.0; // fixed distance from wall
+        let half_spine = spine_length * 0.5;
+        let neck_y = START_HEIGHT + half_spine;
+        let pelvis_y = START_HEIGHT - half_spine;
 
         let mut particles = vec![
-            spine_top,   // 0
-            spine_mid,   // 1
-            spine_bot,   // 2
-            shoulder_a,  // 3
-            shoulder_b,  // 4
-            elbow_a,     // 5
-            hand_a,      // 6
-            elbow_b,     // 7
-            hand_b,      // 8
-            hip_a,       // 9
-            hip_b,       // 10
-            knee_a,      // 11
-            foot_a,      // 12
-            knee_b,      // 13
-            foot_b,      // 14
+            // Spine
+            Particle::new(body_x, neck_y, 1.0),                        // 0: neck
+            Particle::new(body_x, START_HEIGHT, 1.0),                   // 1: spine_mid
+            Particle::new(body_x, pelvis_y, 1.0),                      // 2: pelvis_center
+
+            // Shoulders (spread horizontally from neck, slightly toward wall)
+            Particle::new(body_x - shoulder_spread * 0.5, neck_y, 1.0), // 3: shoulder_L
+            Particle::new(body_x + shoulder_spread * 0.5, neck_y, 1.0), // 4: shoulder_R
+
+            // Elbows: positioned along arm, ratio = upper_arm / (upper_arm + forearm)
+            {
+                let t = upper_arm_len / (upper_arm_len + forearm_len);
+                let sh_x = body_x - shoulder_spread * 0.5;
+                Particle::new(
+                    sh_x + (WALL_X - sh_x) * t,
+                    neck_y - upper_arm_len * 0.2,
+                    1.0,
+                ) // 5: elbow_L
+            },
+            {
+                let t = upper_arm_len / (upper_arm_len + forearm_len);
+                let sh_x = body_x + shoulder_spread * 0.5;
+                Particle::new(
+                    sh_x + (WALL_X - sh_x) * t,
+                    neck_y + forearm_len * 0.3 * t - upper_arm_len * 0.2,
+                    1.0,
+                ) // 6: elbow_R
+            },
+
+            // Hands (on wall)
+            Particle::new(WALL_X + 0.02, neck_y, 1.0),                 // 7: hand_L
+            Particle::new(WALL_X + 0.02, neck_y + forearm_len * 0.3, 1.0), // 8: hand_R
+
+            // Hips (spread horizontally from pelvis)
+            Particle::new(body_x - hip_spread * 0.5, pelvis_y, 1.0),   // 9: hip_L
+            Particle::new(body_x + hip_spread * 0.5, pelvis_y, 1.0),   // 10: hip_R
+
+            // Knees (below hips)
+            Particle::new(
+                body_x - hip_spread * 0.5 - thigh_len * 0.3,
+                pelvis_y - thigh_len * 0.5,
+                1.0,
+            ), // 11: knee_L
+            Particle::new(
+                body_x + hip_spread * 0.5 + thigh_len * 0.3,
+                pelvis_y - thigh_len * 0.5,
+                1.0,
+            ), // 12: knee_R
+
+            // Feet (on wall, below knees)
+            Particle::new(WALL_X + 0.02, pelvis_y - thigh_len * 0.3, 1.0), // 13: foot_L
+            Particle::new(WALL_X + 0.02, pelvis_y - thigh_len * 0.3 - shin_len * 0.3, 1.0), // 14: foot_R
+
+            // Tail (hanging from pelvis, away from wall)
+            Particle::new(body_x + tail_len * 0.7, pelvis_y - tail_len * 0.3, 1.0), // 15: tail
         ];
 
         // Pin grip endpoints to wall
-        for &idx in &[6usize, 8, 12, 14] {
+        for &idx in &[7usize, 8, 13, 14] {
             particles[idx].pinned = true;
             particles[idx].pos.x = WALL_X;
             particles[idx].prev_pos = particles[idx].pos;
         }
 
-        // ── Helper: distance between two particles ────────────────────────
+        // ── Distance helper ─────────────────────────────────────────────
         let dist = |a: usize, b: usize| -> f32 {
             (particles[b].pos - particles[a].pos).length()
         };
 
-        // ── Muscles ───────────────────────────────────────────────────────
+        // ── Bones (indices 0–18) ────────────────────────────────────────
         let mut muscles = Vec::new();
 
-        // Structural bones (indices 0–7)
-        muscles.push(Muscle::bone(0, 1, dist(0, 1)));   // 0: upper spine
-        muscles.push(Muscle::bone(1, 2, dist(1, 2)));   // 1: lower spine
-        muscles.push(Muscle::bone(0, 3, dist(0, 3)));   // 2: clavicle A
-        muscles.push(Muscle::bone(0, 4, dist(0, 4)));   // 3: clavicle B
-        muscles.push(Muscle::bone(2, 9, dist(2, 9)));   // 4: pelvis A
-        muscles.push(Muscle::bone(2, 10, dist(2, 10))); // 5: pelvis B
-        muscles.push(Muscle::bone(3, 4, dist(3, 4)));   // 6: shoulder bar
-        muscles.push(Muscle::bone(9, 10, dist(9, 10))); // 7: hip bar
+        // Spine
+        muscles.push(Muscle::bone(0, 1, dist(0, 1)));     //  0: upper spine
+        muscles.push(Muscle::bone(1, 2, dist(1, 2)));     //  1: lower spine
 
-        // Limb segment bones (indices 8–15) — rigid, maintain limb lengths
-        let add_limb_bones = |muscles: &mut Vec<Muscle>,
-                              attach: usize, joint: usize, end: usize| {
-            muscles.push(Muscle::bone(attach, joint, dist(attach, joint)));
-            muscles.push(Muscle::bone(joint, end, dist(joint, end)));
-        };
-        add_limb_bones(&mut muscles, 3, 5, 6);   // 8–9:   arm A
-        add_limb_bones(&mut muscles, 4, 7, 8);   // 10–11: arm B
-        add_limb_bones(&mut muscles, 9, 11, 12);  // 12–13: leg A
-        add_limb_bones(&mut muscles, 10, 13, 14); // 14–15: leg B
+        // Clavicles
+        muscles.push(Muscle::bone(0, 3, dist(0, 3)));     //  2: clavicle_L
+        muscles.push(Muscle::bone(0, 4, dist(0, 4)));     //  3: clavicle_R
 
-        // Cross-stability bones (indices 16–17)
-        muscles.push(Muscle::bone(3, 9, dist(3, 9)));   // 16: left torso
-        muscles.push(Muscle::bone(4, 10, dist(4, 10))); // 17: right torso
+        // Shoulder bar
+        muscles.push(Muscle::bone(3, 4, dist(3, 4)));     //  4: shoulder bar
 
-        // Active muscles (indices 18–33) — antagonist pairs crossing joints
-        //
-        // Each limb gets 4 muscles: agonist + antagonist for proximal joint,
-        // agonist + antagonist for distal joint.
-        //   spine_near: spine particle close to the limb (0 for arms, 2 for legs)
-        //   spine_far:  spine particle further away (1 = spine_mid for all)
-        use std::f32::consts::PI;
+        // Arms
+        muscles.push(Muscle::bone(3, 5, dist(3, 5)));     //  5: humerus_L
+        muscles.push(Muscle::bone(4, 6, dist(4, 6)));     //  6: humerus_R
+        muscles.push(Muscle::bone(5, 7, dist(5, 7)));     //  7: forearm_L
+        muscles.push(Muscle::bone(6, 8, dist(6, 8)));     //  8: forearm_R
 
-        let add_limb_muscles = |muscles: &mut Vec<Muscle>,
-                                spine_near: usize,
-                                spine_far: usize,
-                                attach: usize,
-                                joint: usize,
-                                end: usize,
-                                lg: &LimbGenes| {
-            let frac_pi_2 = std::f32::consts::FRAC_PI_2;
-            // Proximal joint: agonist (spine_near→joint) + antagonist (spine_far→joint)
-            let r0 = dist(spine_near, joint);
-            let r1 = dist(spine_far, joint);
-            muscles.push(Muscle::muscle(
-                spine_near, joint, r0, r0 * lg.contraction,
-                lg.upper_force, lg.phase, lg.amplitude,
-            ));
-            muscles.push(Muscle::muscle(
-                spine_far, joint, r1, r1 * lg.contraction,
-                lg.upper_force, lg.phase + PI, lg.amplitude,
-            ));
-            // Distal joint: agonist (attach→end) + antagonist (spine_near→end)
-            let r2 = dist(attach, end);
-            let r3 = dist(spine_near, end);
-            muscles.push(Muscle::muscle(
-                attach, end, r2, r2 * lg.contraction,
-                lg.lower_force, lg.phase + frac_pi_2, lg.amplitude,
-            ));
-            muscles.push(Muscle::muscle(
-                spine_near, end, r3, r3 * lg.contraction,
-                lg.lower_force, lg.phase + frac_pi_2 + PI, lg.amplitude,
-            ));
-        };
+        // Pelvis
+        muscles.push(Muscle::bone(2, 9, dist(2, 9)));     //  9: pelvis_L
+        muscles.push(Muscle::bone(2, 10, dist(2, 10)));   // 10: pelvis_R
 
-        // Arms: spine_near=0 (spine_top), spine_far=1 (spine_mid)
-        add_limb_muscles(&mut muscles, 0, 1, 3, 5, 6, &arm_a);   // 18–21
-        add_limb_muscles(&mut muscles, 0, 1, 4, 7, 8, &arm_b);   // 22–25
-        // Legs: spine_near=2 (spine_bot), spine_far=1 (spine_mid)
-        add_limb_muscles(&mut muscles, 2, 1, 9, 11, 12, &leg_a);  // 26–29
-        add_limb_muscles(&mut muscles, 2, 1, 10, 13, 14, &leg_b); // 30–33
+        // Hip bar
+        muscles.push(Muscle::bone(9, 10, dist(9, 10)));   // 11: hip bar
 
-        // ── Mass from link lengths ────────────────────────────────────────
+        // Legs
+        muscles.push(Muscle::bone(9, 11, dist(9, 11)));   // 12: femur_L
+        muscles.push(Muscle::bone(10, 12, dist(10, 12))); // 13: femur_R
+        muscles.push(Muscle::bone(11, 13, dist(11, 13))); // 14: tibia_L
+        muscles.push(Muscle::bone(12, 14, dist(12, 14))); // 15: tibia_R
+
+        // Tail
+        muscles.push(Muscle::bone(2, 15, dist(2, 15)));   // 16: tail
+
+        // Cross-stability diagonals
+        muscles.push(Muscle::bone(3, 10, dist(3, 10)));   // 17: diag L (shoulder_L → hip_R)
+        muscles.push(Muscle::bone(4, 9, dist(4, 9)));     // 18: diag R (shoulder_R → hip_L)
+
+        // ── Active muscles (indices 19–34) ──────────────────────────────
+        // Left side (19–26)
+        muscles.push(Muscle::muscle(0, 5,  dist(0, 5),  muscle_forces[0], 0)); // 19: deltoid_L
+        muscles.push(Muscle::muscle(1, 5,  dist(1, 5),  muscle_forces[1], 1)); // 20: grand_dorsal_L
+        muscles.push(Muscle::muscle(3, 7,  dist(3, 7),  muscle_forces[2], 2)); // 21: bicep_L
+        muscles.push(Muscle::muscle(1, 7,  dist(1, 7),  muscle_forces[3], 3)); // 22: tricep_L
+        muscles.push(Muscle::muscle(1, 11, dist(1, 11), muscle_forces[4], 4)); // 23: hip_flexor_L
+        muscles.push(Muscle::muscle(2, 11, dist(2, 11), muscle_forces[5], 5)); // 24: glute_L
+        muscles.push(Muscle::muscle(9, 13, dist(9, 13), muscle_forces[6], 6)); // 25: quad_L
+        muscles.push(Muscle::muscle(2, 13, dist(2, 13), muscle_forces[7], 7)); // 26: hamstring_L
+
+        // Right side (27–34) — same groups, mirrored particles
+        muscles.push(Muscle::muscle(0, 6,  dist(0, 6),  muscle_forces[0], 0)); // 27: deltoid_R
+        muscles.push(Muscle::muscle(1, 6,  dist(1, 6),  muscle_forces[1], 1)); // 28: grand_dorsal_R
+        muscles.push(Muscle::muscle(4, 8,  dist(4, 8),  muscle_forces[2], 2)); // 29: bicep_R
+        muscles.push(Muscle::muscle(1, 8,  dist(1, 8),  muscle_forces[3], 3)); // 30: tricep_R
+        muscles.push(Muscle::muscle(1, 12, dist(1, 12), muscle_forces[4], 4)); // 31: hip_flexor_R
+        muscles.push(Muscle::muscle(2, 12, dist(2, 12), muscle_forces[5], 5)); // 32: glute_R
+        muscles.push(Muscle::muscle(10, 14, dist(10, 14), muscle_forces[6], 6)); // 33: quad_R
+        muscles.push(Muscle::muscle(2, 14, dist(2, 14), muscle_forces[7], 7)); // 34: hamstring_R
+
+        // ── Particle masses: bone base + muscle contribution ────────────
+        // Base mass from connected bone lengths
         let mut link_sums = vec![0.0_f32; particles.len()];
         for muscle in &muscles {
-            let len = (particles[muscle.b].pos - particles[muscle.a].pos).length();
-            link_sums[muscle.a] += len;
-            link_sums[muscle.b] += len;
+            if muscle.is_bone {
+                let len = (particles[muscle.b].pos - particles[muscle.a].pos).length();
+                link_sums[muscle.a] += len;
+                link_sums[muscle.b] += len;
+            }
         }
         let max_link = link_sums.iter().cloned().fold(0.0_f32, f32::max);
         if max_link > 0.0 {
             for (i, p) in particles.iter_mut().enumerate() {
-                p.mass = 0.1 + (link_sums[i] / max_link) * 1.7;
+                p.mass = 0.1 + (link_sums[i] / max_link) * 1.0; // bone mass: 0.1 to 1.1
             }
         }
 
-        // ── Assemble creature ─────────────────────────────────────────────
+        // Add muscle mass contributions to endpoints
+        for muscle in &muscles {
+            if !muscle.is_bone {
+                let mm = muscle.max_force * muscle.rest_len * MUSCLE_DENSITY;
+                let half = mm * 0.5;
+                particles[muscle.a].mass += half;
+                particles[muscle.b].mass += half;
+            }
+        }
+
+        // ── Assemble creature ───────────────────────────────────────────
         let mut creature = Creature::new(particles, muscles);
         creature.clock_speed = clock_speed;
+        creature.lr_offset = lr_offset;
+        creature.keyframes = keyframes;
         creature.grip_phases = vec![
-            (6,  arm_a.grip_phase),
-            (8,  arm_b.grip_phase),
-            (12, leg_a.grip_phase),
-            (14, leg_b.grip_phase),
+            (7,  grip_phase_hands),
+            (8,  grip_phase_hands + std::f32::consts::PI), // opposite phase for alternating
+            (13, grip_phase_feet),
+            (14, grip_phase_feet + std::f32::consts::PI),
         ];
 
         Ok(creature)
@@ -333,9 +334,15 @@ mod tests {
     }
 
     #[test]
-    fn has_15_particles() {
+    fn has_16_particles() {
         let c = CreatureFactory::build(&flat_genome(0.0)).unwrap();
-        assert_eq!(c.particles.len(), 15);
+        assert_eq!(c.particles.len(), 16);
+    }
+
+    #[test]
+    fn has_35_muscles() {
+        let c = CreatureFactory::build(&flat_genome(0.0)).unwrap();
+        assert_eq!(c.muscles.len(), 35);
     }
 
     #[test]
@@ -347,27 +354,32 @@ mod tests {
     #[test]
     fn endpoints_start_pinned() {
         let c = CreatureFactory::build(&flat_genome(0.0)).unwrap();
-        for &idx in &[6usize, 8, 12, 14] {
+        for &idx in &[7usize, 8, 13, 14] {
             assert!(c.particles[idx].pinned, "particle {idx} should start pinned");
         }
     }
 
     #[test]
-    fn shoulders_above_hips() {
+    fn neck_above_pelvis() {
         let c = CreatureFactory::build(&flat_genome(0.0)).unwrap();
-        let shoulder_avg_y = (c.particles[3].pos.y + c.particles[4].pos.y) / 2.0;
-        let hip_avg_y = (c.particles[9].pos.y + c.particles[10].pos.y) / 2.0;
-        assert!(shoulder_avg_y > hip_avg_y, "shoulders should be above hips");
+        assert!(c.particles[0].pos.y > c.particles[2].pos.y, "neck should be above pelvis");
     }
 
     #[test]
-    fn mass_derived_from_links() {
+    fn has_keyframes() {
         let c = CreatureFactory::build(&flat_genome(0.0)).unwrap();
-        // Masses should vary (not all equal)
-        let masses: Vec<f32> = c.particles.iter().map(|p| p.mass).collect();
-        let min = masses.iter().cloned().fold(f32::INFINITY, f32::min);
-        let max = masses.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-        assert!(max > min + 0.01, "masses should vary, got min={min}, max={max}");
+        // All keyframes should be populated (from genome)
+        for kf in &c.keyframes {
+            for &v in kf {
+                assert!(v >= 0.0 && v <= 1.0);
+            }
+        }
+    }
+
+    #[test]
+    fn muscle_mass_positive() {
+        let c = CreatureFactory::build(&flat_genome(0.0)).unwrap();
+        assert!(c.total_muscle_mass > 0.0);
     }
 
     #[test]
